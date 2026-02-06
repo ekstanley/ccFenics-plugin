@@ -72,8 +72,8 @@ async def solve(
             suggestion="Use define_variational_form first.",
         )
 
-    a_form = session.forms["bilinear"].form
-    L_form = session.forms["linear"].form
+    a_form = session.forms["bilinear"].ufl_form
+    L_form = session.forms["linear"].ufl_form
 
     # Collect boundary conditions
     bcs = [bc_info.bc for bc_info in session.bcs.values()]
@@ -96,9 +96,9 @@ async def solve(
     # Solve
     t0 = time.perf_counter()
     try:
-        # DOLFINx v0.10: LinearProblem accepts petsc_options dict directly
         problem = dolfinx.fem.petsc.LinearProblem(
-            a_form, L_form, bcs=bcs, petsc_options=opts
+            a_form, L_form, bcs=bcs,
+            petsc_options=opts, petsc_options_prefix="solve",
         )
         uh = problem.solve()
     except Exception as exc:
@@ -293,8 +293,8 @@ async def solve_time_dependent(
             suggestion="Use define_variational_form first.",
         )
 
-    a_form = session.forms["bilinear"].form
-    L_form = session.forms["linear"].form
+    a_form = session.forms["bilinear"].ufl_form
+    L_form = session.forms["linear"].ufl_form
     bcs = [bc_info.bc for bc_info in session.bcs.values()]
 
     # Build solver options
@@ -317,7 +317,8 @@ async def solve_time_dependent(
 
         try:
             problem = dolfinx.fem.petsc.LinearProblem(
-                a_form, L_form, bcs=bcs, petsc_options=opts
+                a_form, L_form, bcs=bcs,
+                petsc_options=opts, petsc_options_prefix="ts",
             )
             uh = problem.solve()
         except Exception as exc:

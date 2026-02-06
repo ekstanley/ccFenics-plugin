@@ -115,7 +115,7 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
         "asin": ufl.asin,
         "acos": ufl.acos,
         "atan": ufl.atan,
-        "atan2": ufl.atan_2,
+        "atan2": getattr(ufl, "atan_2", ufl.atan2),
         "abs": ufl.algebra.Abs,
         "sign": ufl.sign,
         "conditional": ufl.conditional,

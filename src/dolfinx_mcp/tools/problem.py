@@ -320,7 +320,7 @@ async def apply_boundary_condition(
     if sub_space is not None:
         bc = dolfinx.fem.dirichletbc(bc_value, dofs, V_dof)
     else:
-        bc = dolfinx.fem.dirichletbc(bc_value, dofs)
+        bc = dolfinx.fem.dirichletbc(bc_value, dofs, V)
 
     # Generate name if not provided
     if name is None:
