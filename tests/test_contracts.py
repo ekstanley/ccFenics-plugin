@@ -14,6 +14,7 @@ from dolfinx_mcp.errors import InvariantError, PreconditionError
 from dolfinx_mcp.session import (
     BCInfo,
     EntityMapInfo,
+    FormInfo,
     FunctionInfo,
     FunctionSpaceInfo,
     MeshInfo,
@@ -291,4 +292,134 @@ class TestToolPreconditions:
         session.active_mesh = "m1"
         ctx = _mock_ctx(session)
         result = await create_function_space(name="V", degree=-1, ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: FormInfo validator tests (2 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestFormInfoContracts:
+    def test_form_info_rejects_empty_name(self):
+        with pytest.raises(AssertionError, match="FormInfo.name must be non-empty"):
+            FormInfo(name="", form=MagicMock(), ufl_form=MagicMock())
+
+    def test_form_info_rejects_none_form(self):
+        with pytest.raises(AssertionError, match="form.*must not be None"):
+            FormInfo(name="bilinear", form=None, ufl_form=MagicMock())
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: Extended cleanup and cascade tests (2 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestExtendedCleanupContracts:
+    def test_cleanup_asserts_all_registries(self):
+        session = _populated_session()
+        session.forms["bilinear"] = FormInfo(
+            name="bilinear", form=MagicMock(), ufl_form=MagicMock()
+        )
+        session.mesh_tags["tags"] = MeshTagsInfo(
+            name="tags", tags=MagicMock(), mesh_name="m1", dimension=1
+        )
+        session.entity_maps["em"] = EntityMapInfo(
+            name="em", entity_map=MagicMock(),
+            parent_mesh="m1", child_mesh="m1", dimension=2,
+        )
+        session.ufl_symbols["f"] = MagicMock()
+        session.cleanup()
+        # All registries must be empty
+        assert len(session.meshes) == 0
+        assert len(session.function_spaces) == 0
+        assert len(session.functions) == 0
+        assert len(session.bcs) == 0
+        assert len(session.forms) == 0
+        assert len(session.solutions) == 0
+        assert len(session.mesh_tags) == 0
+        assert len(session.entity_maps) == 0
+        assert len(session.ufl_symbols) == 0
+        assert session.active_mesh is None
+
+    def test_remove_mesh_cleans_entity_maps(self):
+        session = _populated_session()
+        session.entity_maps["em1"] = EntityMapInfo(
+            name="em1", entity_map=MagicMock(),
+            parent_mesh="m1", child_mesh="m1", dimension=2,
+        )
+        session.remove_mesh("m1")
+        assert "em1" not in session.entity_maps
+        assert len(session.entity_maps) == 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: Extended invariant check coverage (3 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestExtendedInvariants:
+    def test_check_invariants_dangling_solution_ref(self):
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        # Solution references space "V" which does not exist
+        session.solutions["u_h"] = _make_solution_info("u_h", "V")
+        with pytest.raises(InvariantError, match="non-existent space"):
+            session.check_invariants()
+
+    def test_check_invariants_dangling_mesh_tags_ref(self):
+        session = SessionState()
+        # MeshTags references mesh "m1" which does not exist
+        session.mesh_tags["tags"] = MeshTagsInfo(
+            name="tags", tags=MagicMock(), mesh_name="m1", dimension=1
+        )
+        with pytest.raises(InvariantError, match="non-existent mesh"):
+            session.check_invariants()
+
+    def test_check_invariants_dangling_entity_map_ref(self):
+        session = SessionState()
+        # EntityMap references meshes that do not exist
+        session.entity_maps["em"] = EntityMapInfo(
+            name="em", entity_map=MagicMock(),
+            parent_mesh="m1", child_mesh="m2", dimension=2,
+        )
+        with pytest.raises(InvariantError, match="parent_mesh.*not found"):
+            session.check_invariants()
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: Extended tool precondition tests (3 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestExtendedToolPreconditions:
+    @pytest.mark.asyncio
+    async def test_create_mesh_rejects_invalid_cell_type(self):
+        from dolfinx_mcp.tools.mesh import create_mesh
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await create_mesh(
+            name="m", shape="unit_square", cell_type="hexagon", nx=4, ny=4, ctx=ctx
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_run_custom_code_rejects_empty_code(self):
+        from dolfinx_mcp.tools.session_mgmt import run_custom_code
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await run_custom_code(code="", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_apply_bc_rejects_negative_sub_space(self):
+        from dolfinx_mcp.tools.problem import apply_boundary_condition
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await apply_boundary_condition(
+            value=0.0, boundary="True", sub_space=-1, ctx=ctx
+        )
         assert result["error"] == "PRECONDITION_VIOLATED"

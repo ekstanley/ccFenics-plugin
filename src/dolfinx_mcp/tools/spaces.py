@@ -169,6 +169,10 @@ async def create_mixed_space(
     )
 
     session.function_spaces[name] = fs_info
+
+    if __debug__:
+        session.check_invariants()
+
     logger.info(
         "Created mixed function space '%s' from %d subspaces (%d DOFs)",
         name, len(subspaces), num_dofs,

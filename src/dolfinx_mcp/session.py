@@ -135,6 +135,11 @@ class FormInfo:
     ufl_form: Any  # ufl.Form (symbolic)
     description: str = ""
 
+    def __post_init__(self) -> None:
+        assert self.name, "FormInfo.name must be non-empty"
+        assert self.form is not None, "form (compiled) must not be None"
+        assert self.ufl_form is not None, "ufl_form (symbolic) must not be None"
+
     def summary(self) -> dict[str, Any]:
         return {
             "name": self.name,
@@ -381,6 +386,10 @@ class SessionState:
             f"Dangling function space references to deleted mesh '{name}'"
         assert all(mt.mesh_name != name for mt in self.mesh_tags.values()), \
             f"Dangling mesh tag references to deleted mesh '{name}'"
+        assert all(
+            em.parent_mesh != name and em.child_mesh != name
+            for em in self.entity_maps.values()
+        ), f"Dangling entity map references to deleted mesh '{name}'"
         if self.active_mesh is not None:
             assert self.active_mesh in self.meshes
 
@@ -394,6 +403,13 @@ class SessionState:
             ]
             for k in to_remove:
                 del registry[k]
+
+        # Postcondition: no remaining references to deleted space
+        assert all(
+            getattr(v, "space_name", None) != space_name
+            for reg in (self.functions, self.bcs, self.solutions)
+            for v in reg.values()
+        ), f"Dangling references to deleted space '{space_name}'"
 
     # --- Overview ---
 
@@ -431,6 +447,13 @@ class SessionState:
         # Postcondition: all registries empty
         assert len(self.meshes) == 0
         assert len(self.function_spaces) == 0
+        assert len(self.functions) == 0
+        assert len(self.bcs) == 0
+        assert len(self.forms) == 0
+        assert len(self.solutions) == 0
+        assert len(self.mesh_tags) == 0
+        assert len(self.entity_maps) == 0
+        assert len(self.ufl_symbols) == 0
         assert self.active_mesh is None
 
         logger.info("Session state cleaned up")

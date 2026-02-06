@@ -146,6 +146,13 @@ async def create_mesh(
         cell_type: Element type -- "triangle"/"quadrilateral" for 2D, "tetrahedron"/"hexahedron" for 3D.
         dimensions: Optional dimensions dict. For rectangle: {"width": w, "height": h}. For box: {"x": x, "y": y, "z": z}.
     """
+    # Precondition: validate cell_type early (before lazy imports)
+    _VALID_CELL_TYPES = {"triangle", "quadrilateral", "tetrahedron", "hexahedron"}
+    if cell_type not in _VALID_CELL_TYPES:
+        raise PreconditionError(
+            f"Invalid cell_type '{cell_type}'. Must be one of {sorted(_VALID_CELL_TYPES)}."
+        )
+
     from mpi4py import MPI
     import dolfinx.mesh
 
@@ -276,6 +283,9 @@ async def create_mesh(
     session.meshes[name] = info
     session.active_mesh = name
 
+    if __debug__:
+        session.check_invariants()
+
     result = info.summary()
     result["active"] = True
     result["shape"] = shape
@@ -398,6 +408,9 @@ async def mark_boundaries(
     for tag in np.unique(tag_values):
         tag_counts[int(tag)] = int(np.sum(tag_values == tag))
 
+    if __debug__:
+        session.check_invariants()
+
     logger.info("Created boundary tags '%s' on mesh '%s'", name, mesh_info.name)
     return {
         "name": name,
@@ -461,6 +474,9 @@ async def refine_mesh(
     result["original_cells"] = mesh_info.num_cells
     result["original_vertices"] = mesh_info.num_vertices
     result["refinement_factor"] = refined_info.num_cells / mesh_info.num_cells
+
+    if __debug__:
+        session.check_invariants()
 
     logger.info(
         "Refined mesh '%s' -> '%s' (%d -> %d cells)",
@@ -580,6 +596,9 @@ async def create_custom_mesh(
         )
         result["facet_tags"] = facet_tags_name
 
+    if __debug__:
+        session.check_invariants()
+
     logger.info("Imported mesh '%s' from '%s' (%s)", name, filename, cell_type)
     return result
 
@@ -688,6 +707,9 @@ async def create_submesh(
     result["entity_map"] = entity_map_name
     result["num_extracted_entities"] = len(entities)
 
+    if __debug__:
+        session.check_invariants()
+
     logger.info(
         "Created submesh '%s' from '%s' with tags %s (%d entities)",
         name, mesh_name, tag_values, len(entities)
@@ -786,6 +808,9 @@ async def manage_mesh_tags(
         tag_counts = {}
         for tag in unique_tags:
             tag_counts[int(tag)] = int(np.sum(tag_values == tag))
+
+        if __debug__:
+            session.check_invariants()
 
         logger.info("Created mesh tags '%s' on mesh '%s' (dim=%d)", name, mesh_info.name, dimension)
         return {

@@ -135,6 +135,8 @@ async def compute_error(
             suggestion="Use 'L2' or 'H1'.",
         )
 
+    assert error_val >= 0, f"Error norm must be non-negative, got {error_val}"
+
     logger.info("Computed %s error: %.6e", norm_type, error_val)
     return {
         "norm_type": norm_type.upper(),

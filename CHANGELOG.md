@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.1] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Gap Remediation
+- **FormInfo validator**: Added `__post_init__` to the last unvalidated dataclass (all 8 now covered)
+- **Complete cleanup postconditions**: Expanded from 3 to 10 assertions covering all registries
+- **`_remove_space_dependents()` postcondition**: Verifies no dangling `space_name` references remain
+- **`remove_mesh()` entity_maps postcondition**: Verifies no dangling entity map references
+- **Debug invariant checks**: Added `if __debug__: session.check_invariants()` to 12 additional state-mutating tools (15 total). Covers: `create_mesh`, `mark_boundaries`, `refine_mesh`, `create_custom_mesh`, `create_submesh`, `manage_mesh_tags`, `create_mixed_space`, `define_variational_form`, `apply_boundary_condition`, `set_material_properties`, `solve_time_dependent`, `reset_session`
+- **Result postconditions**: NaN/Inf detection on `solve_time_dependent`, `interpolate`, `assemble` (scalar); non-negative assertion on `compute_error`
+- **New preconditions**: `cell_type` validation on `create_mesh`, `code` non-empty on `run_custom_code`, `sub_space >= 0` on `apply_boundary_condition`
+
+### Removed
+- `deal>=4.24.0` dependency (unused -- all contracts enforced via plain assertions and error raises)
+
+### Testing
+- 10 new contract tests (28 contract tests total, 67 total)
+- FormInfo rejection (2), cleanup/cascade coverage (2), invariant coverage for solutions/mesh_tags/entity_maps (3), tool preconditions for cell_type/code/sub_space (3)
+
+---
+
 ## [0.1.0] - 2026-02-06
 
 ### Added
@@ -48,7 +70,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Dependencies
 - `mcp[cli]>=1.2.0`
 - `pydantic>=2.0`
-- `deal>=4.24.0`
 - Runtime: `dolfinx`, `petsc4py`, `basix`, `ufl` (provided by Docker image)
 
 ---

@@ -102,6 +102,13 @@ async def interpolate(
                 suggestion="Check expression syntax. Use x[0], x[1], x[2] for coordinates.",
             ) from exc
 
+        # Postcondition: interpolation result must be finite
+        if not np.isfinite(target_func.x.array).all():
+            raise DOLFINxAPIError(
+                "Interpolation produced NaN/Inf values.",
+                suggestion="Check source expression or function for validity.",
+            )
+
         # Compute statistics
         l2_norm = float(np.linalg.norm(target_func.x.array))
         min_val = float(np.min(target_func.x.array))
@@ -130,6 +137,13 @@ async def interpolate(
                 f"Failed to interpolate from '{source_function}': {exc}",
                 suggestion="Ensure source and target spaces are compatible.",
             ) from exc
+
+        # Postcondition: interpolation result must be finite
+        if not np.isfinite(target_func.x.array).all():
+            raise DOLFINxAPIError(
+                "Interpolation produced NaN/Inf values.",
+                suggestion="Check source expression or function for validity.",
+            )
 
         # Compute statistics
         l2_norm = float(np.linalg.norm(target_func.x.array))
@@ -167,6 +181,13 @@ async def interpolate(
             f"Failed cross-mesh interpolation: {exc}",
             suggestion="Ensure meshes are compatible and source function is defined appropriately.",
         ) from exc
+
+    # Postcondition: interpolation result must be finite
+    if not np.isfinite(target_func.x.array).all():
+        raise DOLFINxAPIError(
+            "Interpolation produced NaN/Inf values.",
+            suggestion="Check source expression or function for validity.",
+        )
 
     # Compute statistics
     l2_norm = float(np.linalg.norm(target_func.x.array))

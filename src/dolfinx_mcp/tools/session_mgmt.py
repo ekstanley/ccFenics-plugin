@@ -8,7 +8,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import handle_tool_errors
+from ..errors import DOLFINxAPIError, PreconditionError, handle_tool_errors
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,10 @@ async def reset_session(
     """
     session = _get_session(ctx)
     session.cleanup()
+
+    if __debug__:
+        session.check_invariants()
+
     return {"status": "reset", "message": "Session state cleared"}
 
 
@@ -73,6 +77,9 @@ async def run_custom_code(
     Returns:
         dict with "output" (captured text) and "error" (if any)
     """
+    if not code or not code.strip():
+        raise PreconditionError("Code string must be non-empty.")
+
     import io
     import sys
     from contextlib import redirect_stderr, redirect_stdout
@@ -166,9 +173,15 @@ async def assemble(
     # Assemble based on target type
     try:
         if target == "scalar":
+            import numpy as np
             fem_form = dolfinx.fem.form(ufl_form)
-            value = dolfinx.fem.assemble_scalar(fem_form)
-            return {"value": float(value)}
+            scalar_val = float(dolfinx.fem.assemble_scalar(fem_form))
+            if not np.isfinite(scalar_val):
+                raise DOLFINxAPIError(
+                    "Assembly produced NaN/Inf scalar value.",
+                    suggestion="Check form expression and boundary conditions.",
+                )
+            return {"value": scalar_val}
 
         elif target == "vector":
             fem_form = dolfinx.fem.form(ufl_form)

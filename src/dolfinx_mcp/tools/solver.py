@@ -326,6 +326,13 @@ async def solve_time_dependent(
                 suggestion="Check boundary conditions and forms for time-dependent problem.",
             ) from exc
 
+        # Postcondition: solution must be finite at each timestep
+        if not np.isfinite(uh.x.array).all():
+            raise SolverError(
+                f"Solution at step {step} (t={t:.3e}) contains NaN/Inf.",
+                suggestion="Check BCs, forms, and time step size.",
+            )
+
         # Update previous solution (if u_n exists)
         if "u_n" in session.functions:
             session.functions["u_n"].function.x.array[:] = uh.x.array
@@ -373,6 +380,9 @@ async def solve_time_dependent(
         space_name=space_name,
         description=f"Time-dependent solution at t={t:.3e}",
     )
+
+    if __debug__:
+        session.check_invariants()
 
     logger.info(
         "Time integration completed: steps=%d, final_t=%.3f, wall_time=%.3fs",

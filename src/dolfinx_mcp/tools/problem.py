@@ -204,6 +204,9 @@ async def define_variational_form(
         description=linear,
     )
 
+    if __debug__:
+        session.check_invariants()
+
     logger.info("Defined variational forms: a=%s, L=%s", bilinear, linear)
     return {
         "bilinear_form": "compiled",
@@ -238,6 +241,9 @@ async def apply_boundary_condition(
         sub_space: Sub-space index for mixed/vector spaces.
         name: Name for this BC. Auto-generated if omitted.
     """
+    if sub_space is not None and sub_space < 0:
+        raise PreconditionError(f"sub_space must be >= 0, got {sub_space}.")
+
     import numpy as np
     import dolfinx.fem
     import dolfinx.mesh
@@ -331,6 +337,10 @@ async def apply_boundary_condition(
     )
 
     session.bcs[name] = bc_info
+
+    if __debug__:
+        session.check_invariants()
+
     logger.info("Applied BC '%s': %d DOFs constrained", name, num_constrained)
     return bc_info.summary()
 
@@ -410,6 +420,9 @@ async def set_material_properties(
         space_name=fs_info.name,
         description=f"Material property: {value}",
     )
+
+    if __debug__:
+        session.check_invariants()
 
     logger.info("Set interpolated material property '%s' = %s", name, value)
     return {"name": name, "type": "interpolated", "expression": value}
