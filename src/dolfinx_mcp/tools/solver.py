@@ -9,7 +9,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, PreconditionError, SolverError, handle_tool_errors
+from ..errors import DOLFINxAPIError, PostconditionError, PreconditionError, SolverError, handle_tool_errors
 from ..session import SessionState, SolutionInfo
 
 logger = logging.getLogger(__name__)
@@ -132,7 +132,8 @@ async def solve(
     l2_norm = float(np.sqrt(abs(assemble_scalar(l2_norm_form))))
 
     # Postcondition: L2 norm must be non-negative
-    assert l2_norm >= 0, f"L2 norm negative: {l2_norm}"
+    if l2_norm < 0:
+        raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
 
     # Identify space name
     space_name = None

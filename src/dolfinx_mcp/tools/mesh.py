@@ -153,6 +153,13 @@ async def create_mesh(
             f"Invalid cell_type '{cell_type}'. Must be one of {sorted(_VALID_CELL_TYPES)}."
         )
 
+    # Precondition: validate shape early (before lazy imports)
+    _VALID_SHAPES = {"unit_square", "unit_cube", "rectangle", "box"}
+    if shape not in _VALID_SHAPES:
+        raise PreconditionError(
+            f"Invalid shape '{shape}'. Must be one of {sorted(_VALID_SHAPES)}."
+        )
+
     from mpi4py import MPI
     import dolfinx.mesh
 
@@ -256,12 +263,6 @@ async def create_mesh(
                 MPI.COMM_WORLD, [[0, 0, 0], [x_dim, y_dim, z_dim]], [nx, ny, nz], cell_types[cell_type]
             )
 
-        else:
-            raise DOLFINxAPIError(
-                f"Unsupported shape '{shape}'.",
-                suggestion="Use one of: 'unit_square', 'unit_cube', 'rectangle', 'box'",
-            )
-
     except DOLFINxAPIError:
         raise
     except Exception as exc:
@@ -329,9 +330,6 @@ async def mark_boundaries(
         name: Name for the boundary tags object.
         mesh_name: Mesh name. Defaults to the active mesh.
     """
-    import dolfinx.mesh
-    import numpy as np
-
     # Preconditions
     if not markers:
         raise PreconditionError("markers list must be non-empty.")
@@ -342,6 +340,9 @@ async def mark_boundaries(
             )
         if not m.get("condition"):
             raise PreconditionError("Each marker must have a non-empty 'condition' string.")
+
+    import dolfinx.mesh
+    import numpy as np
 
     session = _get_session(ctx)
 
@@ -738,6 +739,12 @@ async def manage_mesh_tags(
         values: List of {"entities": list[int], "tag": int} dicts (for create).
         tags_name: Name of tags to query (for query).
     """
+    # Precondition: validate action before lazy imports
+    if action not in ("create", "query"):
+        raise PreconditionError(
+            f"action must be 'create' or 'query', got '{action}'."
+        )
+
     import dolfinx.mesh
     import numpy as np
 
@@ -848,9 +855,3 @@ async def manage_mesh_tags(
             "unique_tags": tags_info.unique_tags,
             "tag_counts": tag_counts,
         }
-
-    else:
-        raise DOLFINxAPIError(
-            f"Invalid action '{action}'.",
-            suggestion="Use 'create' or 'query'.",
-        )

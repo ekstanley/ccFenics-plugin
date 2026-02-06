@@ -110,6 +110,13 @@ async def create_mixed_space(
         subspaces: List of existing function space names to combine.
             All subspaces must be defined on the same mesh.
     """
+    # Precondition: validate subspace count before lazy imports
+    if not subspaces or len(subspaces) < 2:
+        raise PreconditionError(
+            "Mixed space requires at least 2 subspaces.",
+            suggestion="Provide a list with at least 2 function space names.",
+        )
+
     import basix.ufl
     import dolfinx.fem
 
@@ -119,12 +126,6 @@ async def create_mixed_space(
         raise DuplicateNameError(
             f"Function space '{name}' already exists.",
             suggestion=f"Use a different name or remove '{name}' first.",
-        )
-
-    if not subspaces or len(subspaces) < 2:
-        raise DOLFINxAPIError(
-            "Mixed space requires at least 2 subspaces.",
-            suggestion="Provide a list with at least 2 function space names.",
         )
 
     # Resolve all subspaces

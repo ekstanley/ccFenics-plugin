@@ -492,3 +492,59 @@ class TestPhase3Contracts:
         ctx = _mock_ctx(session)
         result = await plot_solution(plot_type="3d", ctx=ctx)
         assert result["error"] == "PRECONDITION_VIOLATED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Precondition-before-import and remaining gap tests (5 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestPhase4Contracts:
+    @pytest.mark.asyncio
+    async def test_create_mesh_rejects_invalid_shape(self):
+        from dolfinx_mcp.tools.mesh import create_mesh
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await create_mesh(
+            name="m", shape="sphere", cell_type="triangle", nx=4, ny=4, ctx=ctx
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_manage_mesh_tags_rejects_invalid_action(self):
+        from dolfinx_mcp.tools.mesh import manage_mesh_tags
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await manage_mesh_tags(action="delete", name="tags", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_mark_boundaries_rejects_empty_markers(self):
+        from dolfinx_mcp.tools.mesh import mark_boundaries
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await mark_boundaries(markers=[], ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_mark_boundaries_rejects_negative_tag(self):
+        from dolfinx_mcp.tools.mesh import mark_boundaries
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await mark_boundaries(
+            markers=[{"tag": -1, "condition": "True"}], ctx=ctx
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_create_mixed_space_rejects_single_subspace(self):
+        from dolfinx_mcp.tools.spaces import create_mixed_space
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await create_mixed_space(name="W", subspaces=["V"], ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"

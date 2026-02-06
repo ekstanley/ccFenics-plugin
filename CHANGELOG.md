@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.3] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 4: Remaining Gap Remediation
+- **Last assert-as-postcondition**: Converted `solver.py` L2 norm assertion to `PostconditionError` (enforced under `python -O`). Zero `assert` postconditions remain in tool files
+- **Eager preconditions (3 tools)**: Moved input validations before lazy `import dolfinx` lines so they fire without DOLFINx installed: `mark_boundaries` (markers/tag/condition), `manage_mesh_tags` (action enum), `create_mixed_space` (subspace count)
+- **String enum early validation (2 tools)**: Added `PreconditionError` for `create_mesh` shape enum and `manage_mesh_tags` action enum before imports
+- **Error type correction**: `create_mixed_space` subspace count changed from `DOLFINxAPIError` to `PreconditionError` (semantically correct for input validation)
+- **Dead code removal**: Removed 2 unreachable `else` clauses in `create_mesh` (shape) and `manage_mesh_tags` (action) superseded by eager preconditions
+
+### Testing
+- 5 new contract tests (40 contract tests total, 79 total)
+- Phase 4: shape precondition (1), action precondition (1), markers empty/negative-tag preconditions (2), subspace count precondition (1)
+
+---
+
 ## [0.1.2] - 2026-02-06
 
 ### Changed
@@ -124,4 +141,11 @@ PRE: format valid            export_solution              PreconditionError
 PRE: target valid            assemble                     PreconditionError
 PRE: expressions non-empty   compute_functionals          PreconditionError
 PRE: plot_type valid         plot_solution                PreconditionError
+POST: l2_norm >= 0           solve                        PostconditionError
+PRE: shape valid             create_mesh                  PreconditionError
+PRE: action valid            manage_mesh_tags             PreconditionError
+PRE: markers non-empty       mark_boundaries              PreconditionError
+PRE: tag >= 0                mark_boundaries              PreconditionError
+PRE: condition non-empty     mark_boundaries              PreconditionError
+PRE: subspaces >= 2          create_mixed_space           PreconditionError
 ```
