@@ -1,0 +1,1 @@
+"""DOLFINx MCP prompt templates."""
