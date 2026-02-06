@@ -6,6 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.6] - 2026-02-06
+
+### Added
+
+#### Design-by-Contract Phase 7: Docker Integration Testing
+- **Runtime postcondition tests (7)**: Positive-path verification of solve finiteness,
+  L2 norms, error computation, interpolation, scalar assembly, functionals
+- **Negative-path contract tests (2)**: NaN injection verifies interpolation and
+  compute_error postconditions fire correctly
+- **Session operation tests (3)**: cleanup(), remove_mesh() cascade, reset_session()
+  with real DOLFINx objects
+
+### Fixed
+- **DOLFINx stable API compatibility**: Updated for current `dolfinx/dolfinx:stable` image
+  - `ufl.atan_2` -> `getattr(ufl, "atan_2", ufl.atan2)` (symbol rename in newer UFL)
+  - `dirichletbc(Constant, dofs)` -> `dirichletbc(Constant, dofs, V)` (API signature change)
+  - `LinearProblem` now receives UFL forms (`.ufl_form`) and requires non-empty `petsc_options_prefix`
+
+### Testing
+- 12 new Docker integration tests (105 total: 92 local + 13 Docker-only)
+- All 19 debug invariants implicitly exercised via full workflow test
+- Runtime postcondition coverage: 10/10 postconditions verified
+
+---
+
 ## [0.1.5] - 2026-02-06
 
 ### Changed
