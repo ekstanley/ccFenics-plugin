@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.5] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 6: Final Hardening and Table Completeness
+- **Eager preconditions (2 tools)**: `create_unit_square` (cell_type string-set before imports), `create_mesh` (name/nx/ny/nz moved before imports)
+- **Error type correction**: `create_unit_square` cell_type changed from `DOLFINxAPIError` to `PreconditionError`
+- **Dead code removal**: 1 unreachable clause in `create_unit_square`
+- **Correspondence table completeness**: 14 new entries (46 -> 60 total)
+
+### Testing
+- 4 new contract tests (53 contract tests total, 92 total)
+- Phase 6: linear empty (1), exact empty (1), tag_values type (1), cell_type precondition (1)
+
+---
+
 ## [0.1.4] - 2026-02-06
 
 ### Changed
@@ -177,4 +193,18 @@ PRE: tag_values non-empty    create_submesh               PreconditionError
 PRE: tag_values all int      create_submesh               PreconditionError
 POST: l2_norm >= 0           get_solver_diagnostics       PostconditionError
 POST: error_val finite       compute_error                PostconditionError
+INV: 1 <= gdim <= 3          MeshInfo.__post_init__       AssertionError
+INV: dofs_constrained > 0    BCInfo.__post_init__         AssertionError
+INV: parent/child non-empty  EntityMapInfo.__post_init__  AssertionError
+INV: name non-empty (Form)   FormInfo.__post_init__       AssertionError
+INV: form is not None        FormInfo.__post_init__       AssertionError
+INV: no dangling solution    check_invariants()           InvariantError
+INV: no dangling mesh_tags   check_invariants()           InvariantError
+INV: no dangling entity_map  check_invariants()           InvariantError
+PRE: cell_type valid         create_unit_square           PreconditionError
+PRE: cell_type valid         create_mesh                  PreconditionError
+PRE: code non-empty          run_custom_code              PreconditionError
+PRE: sub_space >= 0          apply_boundary_condition     PreconditionError
+PRE: degree 0-10             create_function_space        PreconditionError
+POST: entity_maps cleaned    remove_mesh                  PostconditionError
 ```

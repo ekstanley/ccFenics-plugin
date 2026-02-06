@@ -42,6 +42,11 @@ async def create_unit_square(
         raise PreconditionError(f"nx must be > 0, got {nx}.")
     if ny <= 0:
         raise PreconditionError(f"ny must be > 0, got {ny}.")
+    _VALID_CELL_TYPES_2D = {"triangle", "quadrilateral"}
+    if cell_type not in _VALID_CELL_TYPES_2D:
+        raise PreconditionError(
+            f"Invalid cell_type '{cell_type}'. Must be one of {sorted(_VALID_CELL_TYPES_2D)}."
+        )
 
     from mpi4py import MPI
     import dolfinx.mesh
@@ -58,11 +63,6 @@ async def create_unit_square(
         "triangle": dolfinx.mesh.CellType.triangle,
         "quadrilateral": dolfinx.mesh.CellType.quadrilateral,
     }
-    if cell_type not in cell_types:
-        raise DOLFINxAPIError(
-            f"Unsupported cell type '{cell_type}'.",
-            suggestion=f"Use one of: {list(cell_types.keys())}",
-        )
 
     try:
         mesh = dolfinx.mesh.create_unit_square(
@@ -159,11 +159,6 @@ async def create_mesh(
         raise PreconditionError(
             f"Invalid shape '{shape}'. Must be one of {sorted(_VALID_SHAPES)}."
         )
-
-    from mpi4py import MPI
-    import dolfinx.mesh
-
-    # Preconditions
     if not name:
         raise PreconditionError("Mesh name must be non-empty.")
     if nx <= 0:
@@ -172,6 +167,9 @@ async def create_mesh(
         raise PreconditionError(f"ny must be > 0, got {ny}.")
     if shape in ("unit_cube", "box") and nz <= 0:
         raise PreconditionError(f"nz must be > 0 for 3D shapes, got {nz}.")
+
+    from mpi4py import MPI
+    import dolfinx.mesh
 
     session = _get_session(ctx)
 

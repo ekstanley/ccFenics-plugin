@@ -643,3 +643,50 @@ class TestPhase5Contracts:
         session.cleanup()
         assert len(session.solver_diagnostics) == 0
         assert len(session.log_buffer) == 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: Final hardening and table completeness (4 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestPhase6Contracts:
+    @pytest.mark.asyncio
+    async def test_define_variational_form_rejects_empty_linear(self):
+        from dolfinx_mcp.tools.problem import define_variational_form
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await define_variational_form(
+            bilinear="inner(grad(u), grad(v)) * dx", linear="", ctx=ctx
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_compute_error_rejects_empty_exact(self):
+        from dolfinx_mcp.tools.postprocess import compute_error
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await compute_error(exact="", norm_type="L2", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_create_submesh_rejects_non_int_tag_values(self):
+        from dolfinx_mcp.tools.mesh import create_submesh
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await create_submesh(
+            name="sub", tags_name="tags", tag_values=["not_int"], ctx=ctx
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_create_unit_square_rejects_invalid_cell_type(self):
+        from dolfinx_mcp.tools.mesh import create_unit_square
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await create_unit_square(name="m", cell_type="pentagon", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
