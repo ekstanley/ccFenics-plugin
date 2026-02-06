@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from dolfinx_mcp.errors import InvariantError, PreconditionError
+from dolfinx_mcp.errors import InvariantError, PostconditionError, PreconditionError
 from dolfinx_mcp.session import (
     BCInfo,
     EntityMapInfo,
@@ -422,4 +422,73 @@ class TestExtendedToolPreconditions:
         result = await apply_boundary_condition(
             value=0.0, boundary="True", sub_space=-1, ctx=ctx
         )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Contract hardening tests (7 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestPhase3Contracts:
+    @pytest.mark.asyncio
+    async def test_create_discrete_operator_invalid_type(self):
+        from dolfinx_mcp.tools.interpolation import create_discrete_operator
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await create_discrete_operator(
+            operator_type="divergence", source_space="V", target_space="W", ctx=ctx
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_export_solution_invalid_format(self):
+        from dolfinx_mcp.tools.postprocess import export_solution
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await export_solution(filename="out.csv", format="csv", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_assemble_invalid_target(self):
+        from dolfinx_mcp.tools.session_mgmt import assemble
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await assemble(target="tensor", form="u*v*dx", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_compute_functionals_empty_expressions(self):
+        from dolfinx_mcp.tools.postprocess import compute_functionals
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await compute_functionals(expressions=[], ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    def test_check_invariants_dangling_bc_space_ref(self):
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        # BC references space "V" which does not exist
+        session.bcs["bc0"] = _make_bc_info("bc0", "V")
+        with pytest.raises(InvariantError, match="non-existent space"):
+            session.check_invariants()
+
+    def test_postcondition_error_integration(self):
+        """PostconditionError is caught by handle_tool_errors -> POSTCONDITION_VIOLATED."""
+        err = PostconditionError("test postcondition failure")
+        result = err.to_dict()
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "test postcondition failure" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_plot_solution_invalid_type(self):
+        from dolfinx_mcp.tools.postprocess import plot_solution
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await plot_solution(plot_type="3d", ctx=ctx)
         assert result["error"] == "PRECONDITION_VIOLATED"

@@ -16,6 +16,7 @@ from .errors import (
     FunctionSpaceNotFoundError,
     MeshNotFoundError,
     NoActiveMeshError,
+    PostconditionError,
 )
 
 logger = logging.getLogger(__name__)
@@ -381,17 +382,28 @@ class SessionState:
             self.active_mesh = None
 
         # Postcondition: no dangling references to deleted mesh
-        assert name not in self.meshes
-        assert all(fs.mesh_name != name for fs in self.function_spaces.values()), \
-            f"Dangling function space references to deleted mesh '{name}'"
-        assert all(mt.mesh_name != name for mt in self.mesh_tags.values()), \
-            f"Dangling mesh tag references to deleted mesh '{name}'"
-        assert all(
+        if name in self.meshes:
+            raise PostconditionError(f"remove_mesh(): mesh '{name}' still present after removal")
+        if not all(fs.mesh_name != name for fs in self.function_spaces.values()):
+            raise PostconditionError(
+                f"remove_mesh(): dangling function space references to deleted mesh '{name}'"
+            )
+        if not all(mt.mesh_name != name for mt in self.mesh_tags.values()):
+            raise PostconditionError(
+                f"remove_mesh(): dangling mesh tag references to deleted mesh '{name}'"
+            )
+        if not all(
             em.parent_mesh != name and em.child_mesh != name
             for em in self.entity_maps.values()
-        ), f"Dangling entity map references to deleted mesh '{name}'"
+        ):
+            raise PostconditionError(
+                f"remove_mesh(): dangling entity map references to deleted mesh '{name}'"
+            )
         if self.active_mesh is not None:
-            assert self.active_mesh in self.meshes
+            if self.active_mesh not in self.meshes:
+                raise PostconditionError(
+                    f"remove_mesh(): active_mesh '{self.active_mesh}' not in meshes registry"
+                )
 
         logger.info("Removed mesh '%s' and %d dependent spaces", name, len(dep_spaces))
 
@@ -405,11 +417,14 @@ class SessionState:
                 del registry[k]
 
         # Postcondition: no remaining references to deleted space
-        assert all(
+        if not all(
             getattr(v, "space_name", None) != space_name
             for reg in (self.functions, self.bcs, self.solutions)
             for v in reg.values()
-        ), f"Dangling references to deleted space '{space_name}'"
+        ):
+            raise PostconditionError(
+                f"_remove_space_dependents(): dangling references to deleted space '{space_name}'"
+            )
 
     # --- Overview ---
 
@@ -445,15 +460,25 @@ class SessionState:
         self.active_mesh = None
 
         # Postcondition: all registries empty
-        assert len(self.meshes) == 0
-        assert len(self.function_spaces) == 0
-        assert len(self.functions) == 0
-        assert len(self.bcs) == 0
-        assert len(self.forms) == 0
-        assert len(self.solutions) == 0
-        assert len(self.mesh_tags) == 0
-        assert len(self.entity_maps) == 0
-        assert len(self.ufl_symbols) == 0
-        assert self.active_mesh is None
+        if len(self.meshes) != 0:
+            raise PostconditionError(f"cleanup(): meshes registry not empty ({len(self.meshes)} entries)")
+        if len(self.function_spaces) != 0:
+            raise PostconditionError(f"cleanup(): function_spaces registry not empty ({len(self.function_spaces)} entries)")
+        if len(self.functions) != 0:
+            raise PostconditionError(f"cleanup(): functions registry not empty ({len(self.functions)} entries)")
+        if len(self.bcs) != 0:
+            raise PostconditionError(f"cleanup(): bcs registry not empty ({len(self.bcs)} entries)")
+        if len(self.forms) != 0:
+            raise PostconditionError(f"cleanup(): forms registry not empty ({len(self.forms)} entries)")
+        if len(self.solutions) != 0:
+            raise PostconditionError(f"cleanup(): solutions registry not empty ({len(self.solutions)} entries)")
+        if len(self.mesh_tags) != 0:
+            raise PostconditionError(f"cleanup(): mesh_tags registry not empty ({len(self.mesh_tags)} entries)")
+        if len(self.entity_maps) != 0:
+            raise PostconditionError(f"cleanup(): entity_maps registry not empty ({len(self.entity_maps)} entries)")
+        if len(self.ufl_symbols) != 0:
+            raise PostconditionError(f"cleanup(): ufl_symbols registry not empty ({len(self.ufl_symbols)} entries)")
+        if self.active_mesh is not None:
+            raise PostconditionError(f"cleanup(): active_mesh still set to '{self.active_mesh}'")
 
         logger.info("Session state cleaned up")

@@ -14,7 +14,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, FunctionNotFoundError, PreconditionError, handle_tool_errors
+from ..errors import DOLFINxAPIError, FunctionNotFoundError, PostconditionError, PreconditionError, handle_tool_errors
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -135,7 +135,8 @@ async def compute_error(
             suggestion="Use 'L2' or 'H1'.",
         )
 
-    assert error_val >= 0, f"Error norm must be non-negative, got {error_val}"
+    if error_val < 0:
+        raise PostconditionError(f"Error norm must be non-negative, got {error_val}.")
 
     logger.info("Computed %s error: %.6e", norm_type, error_val)
     return {
@@ -160,6 +161,11 @@ async def export_solution(
         format: File format -- "xdmf" or "vtk".
         functions: Names of functions to export. Defaults to all solutions.
     """
+    # Precondition: validate format before expensive imports
+    fmt = format.lower()
+    if fmt not in ("xdmf", "vtk"):
+        raise PreconditionError(f"format must be 'xdmf' or 'vtk', got '{format}'.")
+
     from mpi4py import MPI
     import dolfinx.io
 
@@ -192,7 +198,6 @@ async def export_solution(
     output_dir = "/workspace"
     filepath = os.path.join(output_dir, filename)
 
-    fmt = format.lower()
     if fmt == "xdmf":
         if not filepath.endswith(".xdmf"):
             filepath += ".xdmf"
@@ -216,12 +221,6 @@ async def export_solution(
                     vtk.write_function(func)
         except Exception as exc:
             raise DOLFINxAPIError(f"Failed to write VTK file: {exc}") from exc
-
-    else:
-        raise DOLFINxAPIError(
-            f"Unsupported format '{format}'.",
-            suggestion="Use 'xdmf' or 'vtk'.",
-        )
 
     file_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
 
@@ -339,6 +338,10 @@ async def compute_functionals(
         expressions: List of UFL expression strings to integrate.
             Example: ["u*u*dx", "inner(grad(u), grad(u))*dx"]
     """
+    # Precondition: expressions must be non-empty
+    if not expressions:
+        raise PreconditionError("expressions list must be non-empty.")
+
     import dolfinx.fem
 
     from ..ufl_context import build_namespace, safe_evaluate
@@ -364,9 +367,17 @@ async def compute_functionals(
             form = dolfinx.fem.form(expr)
             value = dolfinx.fem.assemble_scalar(form)
 
+            # Postcondition: assembled value must be finite
+            import math
+            fval = float(value)
+            if not math.isfinite(fval):
+                raise PostconditionError(
+                    f"Functional '{expr_str}' produced non-finite value: {fval}."
+                )
+
             results.append({
                 "expression": expr_str,
-                "value": float(value),
+                "value": fval,
             })
         except Exception as exc:
             raise DOLFINxAPIError(
@@ -500,6 +511,10 @@ async def plot_solution(
         show_mesh: Whether to show mesh edges on the plot.
         output_file: Output filename. Defaults to "/workspace/plot.png".
     """
+    # Precondition: validate plot_type before expensive imports
+    if plot_type not in ("contour", "warp"):
+        raise PreconditionError(f"plot_type must be 'contour' or 'warp', got '{plot_type}'.")
+
     session = _get_session(ctx)
 
     # Find the function to plot
@@ -549,11 +564,6 @@ async def plot_solution(
         elif plot_type == "warp":
             warped = grid.warp_by_scalar("solution", factor=0.1)
             plotter.add_mesh(warped, scalars="solution", cmap=colormap, show_edges=show_mesh)
-        else:
-            raise DOLFINxAPIError(
-                f"Unknown plot type '{plot_type}'.",
-                suggestion="Use 'contour' or 'warp'.",
-            )
 
         # Save screenshot
         output_path = output_file or "/workspace/plot.png"

@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.2] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 3: Contract Hardening
+- **PostconditionError activated**: Converted 16 session `assert` postconditions to `PostconditionError` raises (enforced even under `python -O`). Covers `cleanup()` (10), `remove_mesh()` (5), `_remove_space_dependents()` (1)
+- **`compute_error` postcondition**: Non-negative error norm now raises `PostconditionError` instead of `assert`
+- **Missing invariant checks**: Added `if __debug__: session.check_invariants()` to `interpolate` (3 return paths) and `create_discrete_operator` (1 return path). Total: 19 debug invariant checks
+- **Eager preconditions**: Moved 5 tool input validations before lazy `import dolfinx` lines so they fire without DOLFINx installed: `create_discrete_operator` (operator_type), `export_solution` (format), `compute_functionals` (expressions non-empty), `plot_solution` (plot_type), `assemble` (target)
+- **`compute_functionals` NaN/Inf postcondition**: Each assembled functional value checked with `math.isfinite()`; raises `PostconditionError` on non-finite results
+- **Dead code removal**: Removed 4 unreachable `else` clauses superseded by eager preconditions
+
+### Testing
+- 7 new contract tests (35 contract tests total, 74 total)
+- Phase 3: operator_type/format/target/expressions preconditions (4), BC dangling space invariant (1), PostconditionError integration (1), plot_type precondition (1)
+
+---
+
 ## [0.1.1] - 2026-02-06
 
 ### Changed
@@ -94,6 +112,16 @@ PRE: name not reserved       set_material_properties      PreconditionError
 PRE: points non-empty        evaluate_solution            PreconditionError
 POST: solution is finite     solve                        SolverError
 POST: gmsh finalized         create_custom_mesh           finally block
-POST: no dangling refs       remove_mesh                  AssertionError
-POST: cleanup complete       cleanup                      AssertionError
+POST: no dangling refs       remove_mesh                  PostconditionError
+POST: cleanup complete       cleanup                      PostconditionError
+POST: space deps removed     _remove_space_dependents     PostconditionError
+POST: error_val >= 0         compute_error                PostconditionError
+POST: functional finite      compute_functionals          PostconditionError
+INV: check after interpolate interpolate (3 paths)        if __debug__
+INV: check after disc. op.   create_discrete_operator     if __debug__
+PRE: operator_type valid     create_discrete_operator     PreconditionError
+PRE: format valid            export_solution              PreconditionError
+PRE: target valid            assemble                     PreconditionError
+PRE: expressions non-empty   compute_functionals          PreconditionError
+PRE: plot_type valid         plot_solution                PreconditionError
 ```

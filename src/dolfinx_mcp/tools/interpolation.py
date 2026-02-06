@@ -8,7 +8,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, handle_tool_errors
+from ..errors import DOLFINxAPIError, PreconditionError, handle_tool_errors
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -114,6 +114,9 @@ async def interpolate(
         min_val = float(np.min(target_func.x.array))
         max_val = float(np.max(target_func.x.array))
 
+        if __debug__:
+            session.check_invariants()
+
         logger.info("Interpolated expression into '%s'", target)
         return {
             "target": target,
@@ -149,6 +152,9 @@ async def interpolate(
         l2_norm = float(np.linalg.norm(target_func.x.array))
         min_val = float(np.min(target_func.x.array))
         max_val = float(np.max(target_func.x.array))
+
+        if __debug__:
+            session.check_invariants()
 
         logger.info("Interpolated '%s' into '%s'", source_function, target)
         return {
@@ -194,6 +200,9 @@ async def interpolate(
     min_val = float(np.min(target_func.x.array))
     max_val = float(np.max(target_func.x.array))
 
+    if __debug__:
+        session.check_invariants()
+
     logger.info(
         "Cross-mesh interpolated '%s' (mesh: %s) into '%s'",
         source_function, source_mesh, target,
@@ -226,6 +235,12 @@ async def create_discrete_operator(
         target_space: Name of the target function space.
         name: Name to store the operator. Auto-generated if omitted.
     """
+    # Precondition: validate operator_type before expensive imports
+    if operator_type not in ("gradient", "curl", "interpolation"):
+        raise PreconditionError(
+            f"operator_type must be 'gradient', 'curl', or 'interpolation', got '{operator_type}'."
+        )
+
     import dolfinx.fem
 
     session = _get_session(ctx)
@@ -249,11 +264,6 @@ async def create_discrete_operator(
             operator = dolfinx.fem.discrete_curl(V_source, V_target)
         elif operator_type == "interpolation":
             operator = dolfinx.fem.petsc.interpolation_matrix(V_source, V_target)
-        else:
-            raise DOLFINxAPIError(
-                f"Unknown operator type '{operator_type}'.",
-                suggestion="Use 'gradient', 'curl', or 'interpolation'.",
-            )
     except Exception as exc:
         raise DOLFINxAPIError(
             f"Failed to create {operator_type} operator: {exc}",
@@ -267,6 +277,9 @@ async def create_discrete_operator(
     # Store in session (using ufl_symbols dict with prefix for now)
     operator_key = f"_operator_{name}"
     session.ufl_symbols[operator_key] = operator
+
+    if __debug__:
+        session.check_invariants()
 
     logger.info(
         "Created %s operator '%s': %dx%d matrix, %d NNZ",

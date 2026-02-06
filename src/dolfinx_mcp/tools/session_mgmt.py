@@ -154,6 +154,12 @@ async def assemble(
         - vector: {"norm": float, "size": int}
         - matrix: {"dims": [int, int], "nnz": int}
     """
+    # Precondition: validate target type before expensive imports
+    if target not in ("scalar", "vector", "matrix"):
+        raise PreconditionError(
+            f"target must be 'scalar', 'vector', or 'matrix', got '{target}'."
+        )
+
     import dolfinx.fem
     import dolfinx.fem.petsc
 
@@ -217,9 +223,6 @@ async def assemble(
             nnz = mat.getInfo()["nz_used"]
 
             return {"dims": list(dims), "nnz": int(nnz)}
-
-        else:
-            return {"error": f"Invalid target type: {target}. Use 'scalar', 'vector', or 'matrix'."}
 
     except Exception as e:
         return {"error": f"Assembly failed: {e}"}
