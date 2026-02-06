@@ -548,3 +548,98 @@ class TestPhase4Contracts:
         ctx = _mock_ctx(session)
         result = await create_mixed_space(name="W", subspaces=["V"], ctx=ctx)
         assert result["error"] == "PRECONDITION_VIOLATED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: Eager preconditions and cleanup completeness (9 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestPhase5Contracts:
+    @pytest.mark.asyncio
+    async def test_solve_rejects_invalid_solver_type(self):
+        from dolfinx_mcp.tools.solver import solve
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await solve(solver_type="mumps", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_solve_time_dependent_rejects_invalid_time_scheme(self):
+        from dolfinx_mcp.tools.solver import solve_time_dependent
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await solve_time_dependent(
+            t_end=1.0, dt=0.1, time_scheme="crank_nicolson", ctx=ctx
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_define_variational_form_rejects_empty_bilinear(self):
+        from dolfinx_mcp.tools.problem import define_variational_form
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await define_variational_form(bilinear="", linear="f*v*dx", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_compute_error_rejects_invalid_norm_type(self):
+        from dolfinx_mcp.tools.postprocess import compute_error
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await compute_error(exact="x[0]", norm_type="Linf", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_query_point_values_rejects_zero_tolerance(self):
+        from dolfinx_mcp.tools.postprocess import query_point_values
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await query_point_values(
+            points=[[0.5, 0.5]], tolerance=0.0, ctx=ctx
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_create_custom_mesh_rejects_empty_filename(self):
+        from dolfinx_mcp.tools.mesh import create_custom_mesh
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await create_custom_mesh(name="m", filename="", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_create_submesh_rejects_empty_tag_values(self):
+        from dolfinx_mcp.tools.mesh import create_submesh
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await create_submesh(
+            name="sub", tags_name="tags", tag_values=[], ctx=ctx
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_mark_boundaries_rejects_empty_condition(self):
+        from dolfinx_mcp.tools.mesh import mark_boundaries
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        result = await mark_boundaries(
+            markers=[{"tag": 1, "condition": ""}], ctx=ctx
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    def test_cleanup_clears_solver_diagnostics_and_log_buffer(self):
+        session = SessionState()
+        session.solver_diagnostics["last_run"] = {"converged": True}
+        session.log_buffer.append("test log entry")
+        session.cleanup()
+        assert len(session.solver_diagnostics) == 0
+        assert len(session.log_buffer) == 0

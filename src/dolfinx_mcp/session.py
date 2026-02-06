@@ -478,6 +478,10 @@ class SessionState:
             raise PostconditionError(f"cleanup(): entity_maps registry not empty ({len(self.entity_maps)} entries)")
         if len(self.ufl_symbols) != 0:
             raise PostconditionError(f"cleanup(): ufl_symbols registry not empty ({len(self.ufl_symbols)} entries)")
+        if len(self.solver_diagnostics) != 0:
+            raise PostconditionError(f"cleanup(): solver_diagnostics not empty ({len(self.solver_diagnostics)} entries)")
+        if len(self.log_buffer) != 0:
+            raise PostconditionError(f"cleanup(): log_buffer not empty ({len(self.log_buffer)} entries)")
         if self.active_mesh is not None:
             raise PostconditionError(f"cleanup(): active_mesh still set to '{self.active_mesh}'")
 

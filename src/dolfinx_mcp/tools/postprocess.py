@@ -68,10 +68,6 @@ async def compute_error(
         norm_type: Error norm type -- "L2" or "H1".
         function_name: Name of the computed solution. Defaults to the last solution.
     """
-    import dolfinx.fem
-    import numpy as np
-    import ufl
-
     # Preconditions
     if not exact or not exact.strip():
         raise PreconditionError("exact expression must be non-empty.")
@@ -79,6 +75,10 @@ async def compute_error(
         raise PreconditionError(
             f"norm_type must be 'L2' or 'H1', got '{norm_type}'."
         )
+
+    import dolfinx.fem
+    import numpy as np
+    import ufl
 
     session = _get_session(ctx)
 
@@ -129,12 +129,12 @@ async def compute_error(
              + ufl.inner(ufl.grad(error_func), ufl.grad(error_func))) * ufl.dx
         )
         error_val = float(np.sqrt(abs(dolfinx.fem.assemble_scalar(error_form))))
-    else:
-        raise DOLFINxAPIError(
-            f"Unknown norm type '{norm_type}'.",
-            suggestion="Use 'L2' or 'H1'.",
-        )
 
+    import math
+    if not math.isfinite(error_val):
+        raise PostconditionError(
+            f"Error norm must be finite, got {error_val}."
+        )
     if error_val < 0:
         raise PostconditionError(f"Error norm must be non-negative, got {error_val}.")
 
@@ -407,14 +407,14 @@ async def query_point_values(
         function_name: Name of the function to query. Defaults to the last solution.
         tolerance: Geometric tolerance for point location.
     """
-    import dolfinx.geometry
-    import numpy as np
-
     # Preconditions
     if not points:
         raise PreconditionError("points list must be non-empty.")
     if tolerance <= 0:
         raise PreconditionError(f"tolerance must be > 0, got {tolerance}.")
+
+    import dolfinx.geometry
+    import numpy as np
 
     session = _get_session(ctx)
 

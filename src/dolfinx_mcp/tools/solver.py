@@ -49,6 +49,12 @@ async def solve(
         petsc_options: Additional PETSc options as key-value pairs.
         solution_name: Name for the solution function.
     """
+    # Precondition: validate solver_type before imports
+    if solver_type not in ("direct", "iterative"):
+        raise PreconditionError(
+            f"solver_type must be 'direct' or 'iterative', got '{solver_type}'."
+        )
+
     import dolfinx.fem.petsc
     import numpy as np
 
@@ -83,11 +89,6 @@ async def solve(
         opts["ksp_rtol"] = rtol
         opts["ksp_atol"] = atol
         opts["ksp_max_it"] = max_iter
-    else:
-        raise DOLFINxAPIError(
-            f"Unknown solver_type '{solver_type}'.",
-            suggestion="Use 'direct' or 'iterative'.",
-        )
 
     if petsc_options:
         opts.update(petsc_options)
@@ -270,6 +271,10 @@ async def solve_time_dependent(
         raise PreconditionError(f"dt must be > 0, got {dt}.")
     if t_end <= t_start:
         raise PreconditionError(f"t_end ({t_end}) must be > t_start ({t_start}).")
+    if time_scheme != "backward_euler":
+        raise PreconditionError(
+            f"time_scheme must be 'backward_euler', got '{time_scheme}'."
+        )
 
     import dolfinx.fem.petsc
     import numpy as np
@@ -286,12 +291,6 @@ async def solve_time_dependent(
         raise DOLFINxAPIError(
             "No linear form defined.",
             suggestion="Use define_variational_form first.",
-        )
-
-    if time_scheme != "backward_euler":
-        raise DOLFINxAPIError(
-            f"Unsupported time scheme '{time_scheme}'.",
-            suggestion="Currently only 'backward_euler' is supported.",
         )
 
     a_form = session.forms["bilinear"].form
@@ -436,6 +435,10 @@ async def get_solver_diagnostics(
     # Compute L2 norm
     l2_norm_form = compile_form(ufl.inner(sol_info.function, sol_info.function) * ufl.dx)
     l2_norm = float(np.sqrt(abs(assemble_scalar(l2_norm_form))))
+
+    # Postcondition: L2 norm must be non-negative
+    if l2_norm < 0:
+        raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
 
     return {
         "solution_name": sol_info.name,

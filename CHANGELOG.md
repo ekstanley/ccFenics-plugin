@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.4] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 5: Eager Preconditions and Cleanup Completeness
+- **Eager preconditions (7 tools)**: Moved input validations before lazy imports: `solve` (solver_type), `solve_time_dependent` (time_scheme), `define_variational_form` (bilinear/linear), `compute_error` (exact/norm_type), `query_point_values` (points/tolerance), `create_custom_mesh` (name/filename), `create_submesh` (name/tag_values)
+- **Error type correction (2 tools)**: `solve` solver_type and `solve_time_dependent` time_scheme changed from `DOLFINxAPIError` to `PreconditionError`
+- **Missing postconditions (2 tools)**: `get_solver_diagnostics` L2 norm >= 0; `compute_error` NaN/Inf via `math.isfinite()`
+- **Cleanup completeness**: `cleanup()` now checks `solver_diagnostics` and `log_buffer` (12/12 fields)
+- **Dead code removal**: 3 unreachable clauses removed in `solve`, `solve_time_dependent`, `compute_error`
+
+### Testing
+- 9 new contract tests (49 contract tests total, 88 total)
+- Phase 5: solver_type/time_scheme/bilinear/norm_type/tolerance/filename/tag_values preconditions (7), mark_boundaries condition gap fill (1), cleanup completeness (1)
+
+---
+
 ## [0.1.3] - 2026-02-06
 
 ### Changed
@@ -148,4 +165,16 @@ PRE: markers non-empty       mark_boundaries              PreconditionError
 PRE: tag >= 0                mark_boundaries              PreconditionError
 PRE: condition non-empty     mark_boundaries              PreconditionError
 PRE: subspaces >= 2          create_mixed_space           PreconditionError
+PRE: solver_type valid       solve                        PreconditionError
+PRE: time_scheme valid       solve_time_dependent         PreconditionError
+PRE: bilinear non-empty      define_variational_form      PreconditionError
+PRE: linear non-empty        define_variational_form      PreconditionError
+PRE: exact non-empty         compute_error                PreconditionError
+PRE: norm_type valid         compute_error                PreconditionError
+PRE: tolerance > 0           query_point_values           PreconditionError
+PRE: filename non-empty      create_custom_mesh           PreconditionError
+PRE: tag_values non-empty    create_submesh               PreconditionError
+PRE: tag_values all int      create_submesh               PreconditionError
+POST: l2_norm >= 0           get_solver_diagnostics       PostconditionError
+POST: error_val finite       compute_error                PostconditionError
 ```

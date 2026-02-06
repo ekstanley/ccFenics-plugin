@@ -499,14 +499,14 @@ async def create_custom_mesh(
         name: Unique name for this mesh.
         filename: Path to the .msh file.
     """
-    from mpi4py import MPI
-    import dolfinx.mesh
-
     # Preconditions
     if not name:
         raise PreconditionError("Mesh name must be non-empty.")
     if not filename:
         raise PreconditionError("filename must be non-empty.")
+
+    from mpi4py import MPI
+    import dolfinx.mesh
 
     session = _get_session(ctx)
 
@@ -621,9 +621,6 @@ async def create_submesh(
         tag_values: List of tag values to include in the submesh.
         parent_mesh: Parent mesh name. Defaults to the mesh associated with tags_name.
     """
-    import dolfinx.mesh
-    import numpy as np
-
     # Preconditions
     if not name:
         raise PreconditionError("Submesh name must be non-empty.")
@@ -631,6 +628,9 @@ async def create_submesh(
         raise PreconditionError("tag_values must be non-empty.")
     if not all(isinstance(v, int) for v in tag_values):
         raise PreconditionError("All tag_values must be integers.")
+
+    import dolfinx.mesh
+    import numpy as np
 
     session = _get_session(ctx)
 

@@ -135,14 +135,14 @@ async def define_variational_form(
             only defined space (error if multiple exist).
         test_space: Name of the test function space. If omitted, same as trial_space.
     """
-    import ufl
-    import dolfinx.fem
-
     # Preconditions
     if not bilinear or not bilinear.strip():
         raise PreconditionError("bilinear form expression must be non-empty.")
     if not linear or not linear.strip():
         raise PreconditionError("linear form expression must be non-empty.")
+
+    import ufl
+    import dolfinx.fem
 
     session = _get_session(ctx)
 
