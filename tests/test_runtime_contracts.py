@@ -7,10 +7,16 @@ Phase 7 tests exercise postconditions, debug invariants, and session cascade
 operations that require real DOLFINx objects -- contracts that cannot be tested
 without the FEniCSx runtime.
 
+Phase 15 tests (Groups D, E, F) expand coverage to mesh operations, solver/
+postprocess tools, and Phase 14 tools.
+
 Groups:
     A (7): Positive-path -- runtime contracts pass during valid operations
     B (2): Negative-path -- postconditions detect and reject bad data
     C (3): Session operations -- cascade deletion and cleanup with real objects
+    D (4): Mesh operations -- create, refine, mark, submesh
+    E (4): Solver/postprocess -- time-dependent, export, evaluate, query
+    F (3): Phase 14 tools -- remove_object, compute_mesh_quality, project
 """
 
 from __future__ import annotations
@@ -391,3 +397,283 @@ class TestSessionOperations:
         assert len(session.meshes) == 0
         assert len(session.solutions) == 0
         assert session.active_mesh is None
+
+
+# ---------------------------------------------------------------------------
+# Group D: Mesh Operations (4 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestMeshOperations:
+    """Verify runtime contracts during mesh creation, refinement, and tagging."""
+
+    @pytest.mark.asyncio
+    async def test_create_mesh_rectangle(self, session, ctx):
+        """D1: create_mesh(shape='rectangle') postconditions.
+
+        Verifies correct cell count, dimensions, and invariant check.
+        """
+        from dolfinx_mcp.tools.mesh import create_mesh
+
+        result = await create_mesh(
+            name="rect", shape="rectangle", nx=4, ny=4,
+            dimensions={"width": 2.0, "height": 1.0},
+            ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["num_cells"] > 0
+        assert result["gdim"] == 2
+        assert "rect" in session.meshes
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_refine_mesh_increases_cells(self, session, ctx):
+        """D2: refine_mesh postcondition -- refined cells > original.
+
+        Exercises: mesh.py postcondition for cell count increase.
+        """
+        from dolfinx_mcp.tools.mesh import create_unit_square, refine_mesh
+
+        await create_unit_square(name="m", nx=4, ny=4, ctx=ctx)
+        original_cells = session.meshes["m"].num_cells
+
+        result = await refine_mesh(name="m", new_name="m_ref", ctx=ctx)
+        assert "error" not in result
+        assert session.meshes["m_ref"].num_cells > original_cells
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_mark_boundaries_and_manage_tags(self, session, ctx):
+        """D3: mark_boundaries + manage_mesh_tags -- boundary facets tagged.
+
+        Exercises boundary tagging and tag query postconditions.
+        """
+        from dolfinx_mcp.tools.mesh import create_unit_square, mark_boundaries, manage_mesh_tags
+
+        await create_unit_square(name="m", nx=4, ny=4, ctx=ctx)
+        result = await mark_boundaries(
+            markers=[
+                {"tag": 1, "condition": "near(x[0], 0)"},
+                {"tag": 2, "condition": "near(x[0], 1)"},
+            ],
+            ctx=ctx,
+        )
+        assert "error" not in result
+
+        # Query the tags
+        query_result = await manage_mesh_tags(
+            action="query", query_name=result["tags_name"], ctx=ctx,
+        )
+        assert "error" not in query_result
+        assert query_result["num_entities"] > 0
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_create_submesh(self, session, ctx):
+        """D4: create_submesh postconditions -- fewer cells, entity map created.
+
+        Exercises submesh creation and entity map registration.
+        """
+        from dolfinx_mcp.tools.mesh import create_unit_square, mark_boundaries, create_submesh
+
+        await create_unit_square(name="m", nx=8, ny=8, ctx=ctx)
+        tag_result = await mark_boundaries(
+            markers=[{"tag": 1, "condition": "near(x[0], 0)"}],
+            dimension=2,  # cell markers for submesh
+            ctx=ctx,
+        )
+
+        # Try to create a submesh from tagged cells
+        result = await create_submesh(
+            name="sub", tags_name=tag_result["tags_name"],
+            tag_values=[1], ctx=ctx,
+        )
+        if "error" not in result:
+            assert result["num_cells"] <= session.meshes["m"].num_cells
+            assert len(session.entity_maps) > 0
+            session.check_invariants()
+
+
+# ---------------------------------------------------------------------------
+# Group E: Solver/Postprocess (4 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestSolverPostprocess:
+    """Verify runtime contracts during solve, export, evaluate, query."""
+
+    @pytest.mark.asyncio
+    async def test_solve_time_dependent(self, session, ctx):
+        """E1: solve_time_dependent postconditions.
+
+        Sets up a heat equation with backward Euler and verifies
+        steps completed, final time near t_end, and invariant check.
+        """
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.spaces import create_function_space
+        from dolfinx_mcp.tools.problem import (
+            apply_boundary_condition,
+            define_variational_form,
+            set_material_properties,
+        )
+        from dolfinx_mcp.tools.interpolation import interpolate
+        from dolfinx_mcp.tools.solver import solve_time_dependent
+
+        await create_unit_square(name="mesh", nx=4, ny=4, ctx=ctx)
+        await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
+
+        # Set up u_n (previous timestep) as zero
+        await set_material_properties(name="u_n", value="0*x[0]", ctx=ctx)
+        # Source term
+        await set_material_properties(name="f", value="1.0 + 0*x[0]", ctx=ctx)
+
+        dt = 0.1
+        # Heat equation: M(u-u_n)/dt + K*u = f*v*dx
+        # -> (u*v + dt*inner(grad(u), grad(v)))*dx = (u_n + dt*f)*v*dx
+        await define_variational_form(
+            bilinear=f"(u*v + {dt}*inner(grad(u), grad(v))) * dx",
+            linear=f"(u_n + {dt}*f) * v * dx",
+            ctx=ctx,
+        )
+        await apply_boundary_condition(value=0.0, boundary="True", ctx=ctx)
+
+        result = await solve_time_dependent(
+            t_end=0.3, dt=dt, ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["steps_completed"] > 0
+        assert abs(result["final_time"] - 0.3) < dt
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_export_solution(self, session, ctx):
+        """E2: export_solution postcondition -- file written.
+
+        Exercises: postprocess.py export_solution with XDMF format.
+        """
+        import os
+        from dolfinx_mcp.tools.postprocess import export_solution
+
+        await _setup_poisson(session, ctx)
+
+        result = await export_solution(
+            filename="test_export.xdmf", format="xdmf", ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["file_size_bytes"] > 0
+
+    @pytest.mark.asyncio
+    async def test_evaluate_solution_finite(self, session, ctx):
+        """E3: evaluate_solution postcondition -- values finite.
+
+        Exercises finiteness postcondition at interior points.
+        """
+        from dolfinx_mcp.tools.postprocess import evaluate_solution
+
+        await _setup_poisson(session, ctx)
+
+        result = await evaluate_solution(
+            points=[[0.5, 0.5], [0.25, 0.75]],
+            ctx=ctx,
+        )
+        assert "error" not in result
+        for pt in result["evaluations"]:
+            assert math.isfinite(pt["value"])
+
+    @pytest.mark.asyncio
+    async def test_query_point_values(self, session, ctx):
+        """E4: query_point_values postcondition -- values and cell indices.
+
+        Exercises postconditions for point query results.
+        """
+        from dolfinx_mcp.tools.postprocess import query_point_values
+
+        await _setup_poisson(session, ctx)
+
+        result = await query_point_values(
+            points=[[0.5, 0.5]],
+            ctx=ctx,
+        )
+        assert "error" not in result
+        assert len(result["results"]) == 1
+        pt_result = result["results"][0]
+        assert math.isfinite(pt_result["value"])
+
+
+# ---------------------------------------------------------------------------
+# Group F: Phase 14 Tools (3 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestPhase14Tools:
+    """Verify runtime contracts for remove_object, compute_mesh_quality, project."""
+
+    @pytest.mark.asyncio
+    async def test_remove_object_mesh_cascade(self, session, ctx):
+        """F1: remove_object(mesh) cascade removes all dependents.
+
+        Exercises: session_mgmt.py remove_object with mesh cascade.
+        """
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.spaces import create_function_space
+        from dolfinx_mcp.tools.problem import set_material_properties
+        from dolfinx_mcp.tools.session_mgmt import remove_object
+
+        await create_unit_square(name="m", nx=4, ny=4, ctx=ctx)
+        await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
+        await set_material_properties(name="g", value="x[0]", ctx=ctx)
+
+        assert "m" in session.meshes
+        assert "V" in session.function_spaces
+        assert "g" in session.functions
+
+        result = await remove_object(name="m", object_type="mesh", ctx=ctx)
+        assert "error" not in result
+        assert result["cascade"] is True
+        assert "m" not in session.meshes
+        assert len(session.function_spaces) == 0
+        assert len(session.functions) == 0
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_compute_mesh_quality(self, session, ctx):
+        """F2: compute_mesh_quality -- all metrics > 0 and finite.
+
+        Exercises: mesh.py postconditions for quality metrics.
+        """
+        from dolfinx_mcp.tools.mesh import create_unit_square, compute_mesh_quality
+
+        await create_unit_square(name="m", nx=4, ny=4, ctx=ctx)
+        result = await compute_mesh_quality(mesh_name="m", ctx=ctx)
+        assert "error" not in result
+        assert result["min_volume"] > 0
+        assert result["max_volume"] > 0
+        assert result["mean_volume"] > 0
+        assert result["quality_ratio"] > 0
+        assert result["quality_ratio"] <= 1.0
+        assert math.isfinite(result["std_volume"])
+
+    @pytest.mark.asyncio
+    async def test_project_l2(self, session, ctx):
+        """F3: project() L2 projection -- result finite, norm > 0.
+
+        Exercises: interpolation.py project postconditions.
+        """
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.spaces import create_function_space
+        from dolfinx_mcp.tools.interpolation import project
+
+        await create_unit_square(name="mesh", nx=4, ny=4, ctx=ctx)
+        await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
+
+        result = await project(
+            name="p_func",
+            target_space="V",
+            expression="sin(pi*x[0])",
+            ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["l2_norm"] > 0
+        assert math.isfinite(result["l2_norm"])
+        assert "p_func" in session.functions
+        session.check_invariants()

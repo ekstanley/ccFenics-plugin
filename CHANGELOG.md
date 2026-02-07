@@ -6,6 +6,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.14] - 2026-02-06
+
+### Testing
+
+#### Design-by-Contract Phase 15: Docker Integration Test Expansion
+- **11 new Docker integration tests** expanding coverage from 12 to 23+ tools
+- **Group D (4 tests)**: Mesh operations -- create_mesh rectangle (D1), refine_mesh
+  cell count increase (D2), mark_boundaries + manage_mesh_tags (D3), create_submesh (D4)
+- **Group E (4 tests)**: Solver/postprocess -- solve_time_dependent heat equation (E1),
+  export_solution XDMF (E2), evaluate_solution finiteness (E3), query_point_values (E4)
+- **Group F (3 tests)**: Phase 14 tools -- remove_object mesh cascade (F1),
+  compute_mesh_quality metrics (F2), project L2 projection (F3)
+- Docker test total: 24 (13 existing + 11 new)
+- Local test total: 139 passed, 4 skipped
+
+---
+
 ## [0.1.13] - 2026-02-06
 
 ### Added
