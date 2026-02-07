@@ -34,6 +34,10 @@ async def create_unit_square(
         nx: Number of cells in x direction.
         ny: Number of cells in y direction.
         cell_type: Element type -- "triangle" or "quadrilateral".
+
+    Returns:
+        dict with name, cell_type, num_cells, num_vertices, gdim, tdim,
+        and active (bool, always True for newly created mesh).
     """
     # Preconditions
     if not name:
@@ -115,6 +119,10 @@ async def get_mesh_info(
 
     Args:
         name: Mesh name. Defaults to the active mesh.
+
+    Returns:
+        dict with name, cell_type, num_cells, num_vertices, gdim, tdim,
+        bounding_box (dict with min/max coordinate lists), and active (bool).
     """
     import numpy as np
 
@@ -164,6 +172,10 @@ async def create_mesh(
         nz: Number of cells in z direction (for 3D shapes).
         cell_type: Element type -- "triangle"/"quadrilateral" for 2D, "tetrahedron"/"hexahedron" for 3D.
         dimensions: Optional dimensions dict. For rectangle: {"width": w, "height": h}. For box: {"x": x, "y": y, "z": z}.
+
+    Returns:
+        dict with name, cell_type, num_cells, num_vertices, gdim, tdim,
+        active (bool), and shape (the shape type string).
     """
     # Precondition: validate cell_type early (before lazy imports)
     _VALID_CELL_TYPES = {"triangle", "quadrilateral", "tetrahedron", "hexahedron"}
@@ -353,6 +365,10 @@ async def mark_boundaries(
                 Example: [{"tag": 1, "condition": "x[0] < 1e-14"}, {"tag": 2, "condition": "x[0] > 1.0 - 1e-14"}]
         name: Name for the boundary tags object.
         mesh_name: Mesh name. Defaults to the active mesh.
+
+    Returns:
+        dict with name, mesh (parent mesh name), dim (facet dimension),
+        num_facets (total tagged), and tag_counts (dict mapping tag int to count).
     """
     # Preconditions
     if not markers:
@@ -465,6 +481,11 @@ async def refine_mesh(
     Args:
         name: Mesh name to refine. Defaults to the active mesh.
         new_name: Name for the refined mesh. Defaults to "{name}_refined".
+
+    Returns:
+        dict with name, cell_type, num_cells, num_vertices, gdim, tdim,
+        active (bool), original_mesh (str), original_cells (int),
+        original_vertices (int), and refinement_factor (float).
     """
     import dolfinx.mesh
 
@@ -538,6 +559,11 @@ async def create_custom_mesh(
     Args:
         name: Unique name for this mesh.
         filename: Path to the .msh file.
+
+    Returns:
+        dict with name, cell_type, num_cells, num_vertices, gdim, tdim,
+        active (bool), filename (str), and optionally cell_tags and
+        facet_tags (names of auto-created MeshTags if present in the file).
     """
     # Preconditions
     if not name:
@@ -669,6 +695,12 @@ async def create_submesh(
         tags_name: Name of the MeshTags to use.
         tag_values: List of tag values to include in the submesh.
         parent_mesh: Parent mesh name. Defaults to the mesh associated with tags_name.
+
+    Returns:
+        dict with name, cell_type, num_cells, num_vertices, gdim, tdim,
+        active (bool), parent_mesh (str), tags_name (str), tag_values (list),
+        entity_map (name of auto-created EntityMapInfo), and
+        num_extracted_entities (int).
     """
     # Preconditions
     if not name:
@@ -786,6 +818,10 @@ async def manage_mesh_tags(
         dimension: Dimension of entities to tag (for create).
         values: List of {"entities": list[int], "tag": int} dicts (for create).
         tags_name: Name of tags to query (for query).
+
+    Returns:
+        dict with name, mesh (str), dimension (int), num_entities (int),
+        unique_tags (list of ints), and tag_counts (dict mapping tag to count).
     """
     # Precondition: validate action before lazy imports
     if action not in ("create", "query"):

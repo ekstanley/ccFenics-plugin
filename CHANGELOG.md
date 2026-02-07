@@ -6,6 +6,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.5] - 2026-02-06
+
+### Added
+
+#### Design-by-Contract Phase 21: Return Contract Documentation
+- **24 `Returns:` docstring sections** added to tool functions, completing the
+  MCP API specification. In an MCP server, the tool docstring is the contract
+  the AI agent reads -- without return documentation, the output contract is
+  unspecified.
+- All 31 tools now have `Returns:` sections (was 7/31)
+- 24 new SPEC correspondence table entries
+- Docstring-only changes: zero runtime impact, all existing tests pass
+
+**Files modified (7):**
+- `session_mgmt.py` (2): get_session_state, reset_session
+- `mesh.py` (7): create_unit_square, get_mesh_info, create_mesh, mark_boundaries,
+  refine_mesh, create_custom_mesh, create_submesh, manage_mesh_tags
+- `spaces.py` (2): create_function_space, create_mixed_space
+- `problem.py` (3): define_variational_form, apply_boundary_condition,
+  set_material_properties
+- `solver.py` (1): solve
+- `postprocess.py` (6): compute_error, export_solution, evaluate_solution,
+  compute_functionals, query_point_values, plot_solution
+- `interpolation.py` (2): interpolate, create_discrete_operator
+
+**v0.2.5 metrics:**
+- 31 tools, 31/31 with Returns: (100%)
+- 145 correspondence table entries (was 121)
+- 172 local tests (170 passed, 2 skipped, 1 collection skip)
+- 23 Docker integration tests
+- 195 total tests
+
+---
+
 ## [0.2.4] - 2026-02-06
 
 ### Added
@@ -626,4 +660,28 @@ INV: check after overview     get_session_state            if __debug__
 INV: check after assemble     assemble (3 paths)           if __debug__
 INV: check after diagnostics  get_solver_diagnostics       if __debug__
 INV: check after mesh_info    get_mesh_info                if __debug__
+SPEC: returns documented      get_session_state            Returns: docstring
+SPEC: returns documented      reset_session                Returns: docstring
+SPEC: returns documented      create_unit_square           Returns: docstring
+SPEC: returns documented      get_mesh_info                Returns: docstring
+SPEC: returns documented      create_mesh                  Returns: docstring
+SPEC: returns documented      mark_boundaries              Returns: docstring
+SPEC: returns documented      refine_mesh                  Returns: docstring
+SPEC: returns documented      create_custom_mesh           Returns: docstring
+SPEC: returns documented      create_submesh               Returns: docstring
+SPEC: returns documented      manage_mesh_tags             Returns: docstring
+SPEC: returns documented      create_function_space        Returns: docstring
+SPEC: returns documented      create_mixed_space           Returns: docstring
+SPEC: returns documented      define_variational_form      Returns: docstring
+SPEC: returns documented      apply_boundary_condition     Returns: docstring
+SPEC: returns documented      set_material_properties      Returns: docstring
+SPEC: returns documented      solve                        Returns: docstring
+SPEC: returns documented      compute_error                Returns: docstring
+SPEC: returns documented      export_solution              Returns: docstring
+SPEC: returns documented      evaluate_solution            Returns: docstring
+SPEC: returns documented      compute_functionals          Returns: docstring
+SPEC: returns documented      query_point_values           Returns: docstring
+SPEC: returns documented      plot_solution                Returns: docstring
+SPEC: returns documented      interpolate                  Returns: docstring
+SPEC: returns documented      create_discrete_operator     Returns: docstring
 ```

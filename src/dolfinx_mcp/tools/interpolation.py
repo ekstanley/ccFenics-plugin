@@ -74,6 +74,11 @@ async def interpolate(
             If on same mesh, does direct interpolation. If source_mesh is provided,
             does cross-mesh interpolation.
         source_mesh: Name of the mesh for source_function (for cross-mesh interpolation).
+
+    Returns:
+        dict with target (str), source (str), l2_norm (float), min_value (float),
+        max_value (float), and optionally interpolation_type ("same_mesh" or
+        "cross_mesh"), source_mesh (str), and expression (str).
     """
     import numpy as np
     import dolfinx.fem
@@ -247,6 +252,10 @@ async def create_discrete_operator(
         source_space: Name of the source function space.
         target_space: Name of the target function space.
         name: Name to store the operator. Auto-generated if omitted.
+
+    Returns:
+        dict with name (str), operator_type (str), source_space (str),
+        target_space (str), matrix_size (dict with rows/cols), and nnz (int).
     """
     # Precondition: validate operator_type before expensive imports
     if operator_type not in ("gradient", "curl", "interpolation"):

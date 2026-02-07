@@ -136,6 +136,11 @@ async def define_variational_form(
         trial_space: Name of the trial function space. If omitted, uses the
             only defined space (error if multiple exist).
         test_space: Name of the test function space. If omitted, same as trial_space.
+
+    Returns:
+        dict with bilinear_form ("compiled"), linear_form ("compiled"),
+        bilinear_expression (str), linear_expression (str),
+        trial_space (str), and test_space (str).
     """
     # Preconditions
     if not bilinear or not bilinear.strip():
@@ -253,6 +258,10 @@ async def apply_boundary_condition(
         function_space: Name of the function space. Defaults to the only space.
         sub_space: Sub-space index for mixed/vector spaces.
         name: Name for this BC. Auto-generated if omitted.
+
+    Returns:
+        dict with name, space_name, num_dofs (constrained DOF count),
+        and description (summary of value and boundary).
     """
     if sub_space is not None and sub_space < 0:
         raise PreconditionError(f"sub_space must be >= 0, got {sub_space}.")
@@ -383,6 +392,10 @@ async def set_material_properties(
             Example: "2*pi**2*sin(pi*x[0])*sin(pi*x[1])"
         function_space: Function space for interpolation (required for
             non-constant expressions). Defaults to the only space.
+
+    Returns:
+        dict with name, type ("constant" or "interpolated"), and either
+        value (float, for constants) or expression (str, for interpolated).
     """
     # Preconditions: reject reserved UFL symbol names
     _RESERVED_UFL_NAMES = frozenset({

@@ -48,6 +48,11 @@ async def solve(
         max_iter: Maximum iterations (iterative only).
         petsc_options: Additional PETSc options as key-value pairs.
         solution_name: Name for the solution function.
+
+    Returns:
+        dict with converged (bool), converged_reason (int), iterations (int),
+        residual_norm (float), wall_time (float, seconds), solution_name (str),
+        and solution_norm_L2 (float).
     """
     # Precondition: validate solver_type before imports
     if solver_type not in ("direct", "iterative"):

@@ -26,6 +26,12 @@ async def get_session_state(
     """Get the current session state: all meshes, spaces, functions, BCs, forms, solutions.
 
     Use this to inspect what objects are available and their properties.
+
+    Returns:
+        dict with active_mesh (str or null), meshes (dict of mesh summaries),
+        function_spaces (dict), functions (dict), boundary_conditions (dict),
+        forms (dict), solutions (dict), mesh_tags (dict), entity_maps (dict),
+        and ufl_symbols (list of registered symbol names).
     """
     session = _get_session(ctx)
 
@@ -43,6 +49,9 @@ async def reset_session(
     """Clear all session state: meshes, spaces, functions, BCs, forms, solutions.
 
     This resets the session to a clean state, removing all registered objects.
+
+    Returns:
+        dict with status ("reset") and message (confirmation string).
     """
     session = _get_session(ctx)
     session.cleanup()

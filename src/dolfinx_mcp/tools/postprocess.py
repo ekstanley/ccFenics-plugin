@@ -67,6 +67,10 @@ async def compute_error(
             Example: "sin(pi*x[0])*sin(pi*x[1])"
         norm_type: Error norm type -- "L2" or "H1".
         function_name: Name of the computed solution. Defaults to the last solution.
+
+    Returns:
+        dict with norm_type (str), error_value (float), and
+        function_name (str, the computed solution used).
     """
     # Preconditions
     if not exact or not exact.strip():
@@ -155,6 +159,10 @@ async def export_solution(
         filename: Output filename (written to /workspace/).
         format: File format -- "xdmf" or "vtk".
         functions: Names of functions to export. Defaults to all solutions.
+
+    Returns:
+        dict with file_path (str), format (str), file_size_bytes (int),
+        and functions_exported (list of function names).
     """
     # Precondition: validate format before expensive imports
     fmt = format.lower()
@@ -254,6 +262,10 @@ async def evaluate_solution(
     Args:
         points: List of coordinates where to evaluate. Each point is a list [x, y] or [x, y, z].
         function_name: Name of the function to evaluate. Defaults to the last solution.
+
+    Returns:
+        dict with function_name (str), num_points (int), and evaluations
+        (list of dicts, each with point and value; value is null if outside mesh).
     """
     # Preconditions
     if not points:
@@ -342,6 +354,10 @@ async def compute_functionals(
     Args:
         expressions: List of UFL expression strings to integrate.
             Example: ["u*u*dx", "inner(grad(u), grad(u))*dx"]
+
+    Returns:
+        dict with num_functionals (int) and functionals (list of dicts,
+        each with expression (str) and value (float)).
     """
     # Precondition: expressions must be non-empty
     if not expressions:
@@ -416,6 +432,11 @@ async def query_point_values(
         points: List of coordinates where to query. Each point is a list [x, y] or [x, y, z].
         function_name: Name of the function to query. Defaults to the last solution.
         tolerance: Geometric tolerance for point location.
+
+    Returns:
+        dict with function_name (str), num_points (int), tolerance (float),
+        and queries (list of dicts, each with point, value, and cell_index;
+        value and cell_index are null if outside mesh).
     """
     # Preconditions
     if not points:
@@ -516,6 +537,9 @@ async def plot_solution(
         colormap: Matplotlib colormap name (e.g., "viridis", "plasma", "coolwarm").
         show_mesh: Whether to show mesh edges on the plot.
         output_file: Output filename. Defaults to "/workspace/plot.png".
+
+    Returns:
+        dict with file_path (str), plot_type (str), and file_size_bytes (int).
     """
     # Precondition: validate plot_type before expensive imports
     if plot_type not in ("contour", "warp"):

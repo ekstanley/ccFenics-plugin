@@ -37,6 +37,10 @@ async def create_function_space(
         shape: Component shape for vector/tensor spaces (e.g. [2] for 2D vector).
             Omit for scalar spaces.
         mesh_name: Which mesh to build on. Defaults to the active mesh.
+
+    Returns:
+        dict with name, mesh_name, element_family, element_degree, num_dofs,
+        and optionally shape (list of ints, present for vector/tensor spaces).
     """
     # Preconditions
     if not name:
@@ -117,6 +121,10 @@ async def create_mixed_space(
         name: Unique name for this mixed function space.
         subspaces: List of existing function space names to combine.
             All subspaces must be defined on the same mesh.
+
+    Returns:
+        dict with name, mesh_name, element_family ("Mixed"), element_degree
+        (max degree of subspaces), num_dofs, and subspaces (list of names).
     """
     # Precondition: validate subspace count before lazy imports
     if not subspaces or len(subspaces) < 2:
