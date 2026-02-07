@@ -10,9 +10,17 @@ def get_capabilities() -> dict:
     """Supported element families, formats, solvers, and features."""
     return {
         "element_families": [
-            {"name": "Lagrange", "description": "Standard continuous Lagrange elements", "degrees": "1-5"},
+            {
+                "name": "Lagrange",
+                "description": "Standard continuous Lagrange elements",
+                "degrees": "1-5",
+            },
             {"name": "DG", "description": "Discontinuous Galerkin elements", "degrees": "0-5"},
-            {"name": "N1curl", "description": "Nedelec edge elements (first kind)", "degrees": "1-3"},
+            {
+                "name": "N1curl",
+                "description": "Nedelec edge elements (first kind)",
+                "degrees": "1-3",
+            },
             {"name": "RT", "description": "Raviart-Thomas face elements", "degrees": "1-3"},
             {"name": "BDM", "description": "Brezzi-Douglas-Marini elements", "degrees": "1-3"},
             {"name": "CR", "description": "Crouzeix-Raviart elements", "degrees": "1"},
@@ -212,7 +220,10 @@ def get_tags_schema() -> dict:
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 3,
-                "description": "Topological dimension of tagged entities (0=vertex, 1=edge, 2=face, 3=cell)",
+                "description": (
+                    "Topological dimension of tagged entities"
+                    " (0=vertex, 1=edge, 2=face, 3=cell)"
+                ),
             },
             "entities": {
                 "type": "array",

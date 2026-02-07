@@ -6,6 +6,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.8] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 24: Ruff Lint Zero
+- **43 ruff lint errors eliminated** (was 43, now 0):
+  - 15 I001 (import sorting) auto-fixed across 10 files
+  - 4 F401 (unused imports) removed: `DuplicateNameError`, `InvalidUFLExpressionError`
+    in problem.py, `sys` in session_mgmt.py, `dolfinx.mesh` in mesh.py
+  - 1 F841 (unused variable) removed: `space_name` in postprocess.py compute_error
+  - 23 E501 (line-too-long) fixed: session.py cleanup postconditions refactored from
+    11 repetitive if/raise blocks to a loop, long docstrings and dict literals wrapped
+  - 1 E402 (import-not-at-top) suppressed with noqa in server.py (intentional ordering)
+- **session.py cleanup() refactored**: 11 repetitive postcondition checks replaced with
+  a registry iteration loop -- same behavior, 50% fewer lines, no E501 violations
+- Zero runtime behavioral changes; all 174 local tests pass
+
+**v0.2.8 metrics:**
+- Ruff errors: 0 (was 43)
+- 174 local tests passed, 3 skipped
+- 23 Docker integration tests
+- 197 total tests
+
+---
+
 ## [0.2.7] - 2026-02-06
 
 ### Changed

@@ -14,7 +14,14 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, DOLFINxMCPError, FunctionNotFoundError, PostconditionError, PreconditionError, handle_tool_errors
+from ..errors import (
+    DOLFINxAPIError,
+    DOLFINxMCPError,
+    FunctionNotFoundError,
+    PostconditionError,
+    PreconditionError,
+    handle_tool_errors,
+)
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -90,11 +97,9 @@ async def compute_error(
     if function_name is not None:
         fn_info = session.get_function(function_name)
         uh = fn_info.function
-        space_name = fn_info.space_name
     else:
         last_sol = session.get_last_solution()
         uh = last_sol.function
-        space_name = last_sol.space_name
 
     V = uh.function_space
 
@@ -169,8 +174,8 @@ async def export_solution(
     if fmt not in ("xdmf", "vtk"):
         raise PreconditionError(f"format must be 'xdmf' or 'vtk', got '{format}'.")
 
-    from mpi4py import MPI
     import dolfinx.io
+    from mpi4py import MPI
 
     session = _get_session(ctx)
 

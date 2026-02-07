@@ -17,7 +17,8 @@ def compute_l2_norm(function) -> float:
     """
     import numpy as np
     import ufl
-    from dolfinx.fem import assemble_scalar, form as compile_form
+    from dolfinx.fem import assemble_scalar
+    from dolfinx.fem import form as compile_form
 
     l2_form = compile_form(ufl.inner(function, function) * ufl.dx)
     return float(np.sqrt(abs(assemble_scalar(l2_form))))

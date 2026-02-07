@@ -80,8 +80,8 @@ async def interpolate(
         max_value (float), and optionally interpolation_type ("same_mesh" or
         "cross_mesh"), source_mesh (str), and expression (str).
     """
-    import numpy as np
     import dolfinx.fem
+    import numpy as np
 
     session = _get_session(ctx)
 

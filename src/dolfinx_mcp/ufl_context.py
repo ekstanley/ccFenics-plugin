@@ -72,8 +72,8 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
     - Spatial coordinate x, facet normal n, cell diameter h
     - All session-registered functions, spaces, and UFL symbols
     """
-    import ufl
     import numpy as np
+    import ufl
 
     mesh_info = session.get_mesh(mesh_name)
     mesh = mesh_info.mesh

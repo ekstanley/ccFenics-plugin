@@ -504,7 +504,8 @@ class SessionState:
         if __debug__:
             if result.space_name not in self.function_spaces:
                 raise PostconditionError(
-                    f"get_last_solution(): space '{result.space_name}' not in function_spaces registry"
+                    f"get_last_solution(): space '{result.space_name}'"
+                    " not in function_spaces registry"
                 )
         return result
 
@@ -628,28 +629,23 @@ class SessionState:
         self.active_mesh = None
 
         # Postcondition: all registries empty
-        if len(self.meshes) != 0:
-            raise PostconditionError(f"cleanup(): meshes registry not empty ({len(self.meshes)} entries)")
-        if len(self.function_spaces) != 0:
-            raise PostconditionError(f"cleanup(): function_spaces registry not empty ({len(self.function_spaces)} entries)")
-        if len(self.functions) != 0:
-            raise PostconditionError(f"cleanup(): functions registry not empty ({len(self.functions)} entries)")
-        if len(self.bcs) != 0:
-            raise PostconditionError(f"cleanup(): bcs registry not empty ({len(self.bcs)} entries)")
-        if len(self.forms) != 0:
-            raise PostconditionError(f"cleanup(): forms registry not empty ({len(self.forms)} entries)")
-        if len(self.solutions) != 0:
-            raise PostconditionError(f"cleanup(): solutions registry not empty ({len(self.solutions)} entries)")
-        if len(self.mesh_tags) != 0:
-            raise PostconditionError(f"cleanup(): mesh_tags registry not empty ({len(self.mesh_tags)} entries)")
-        if len(self.entity_maps) != 0:
-            raise PostconditionError(f"cleanup(): entity_maps registry not empty ({len(self.entity_maps)} entries)")
-        if len(self.ufl_symbols) != 0:
-            raise PostconditionError(f"cleanup(): ufl_symbols registry not empty ({len(self.ufl_symbols)} entries)")
-        if len(self.solver_diagnostics) != 0:
-            raise PostconditionError(f"cleanup(): solver_diagnostics not empty ({len(self.solver_diagnostics)} entries)")
-        if len(self.log_buffer) != 0:
-            raise PostconditionError(f"cleanup(): log_buffer not empty ({len(self.log_buffer)} entries)")
+        for _name, _reg in [
+            ("meshes", self.meshes),
+            ("function_spaces", self.function_spaces),
+            ("functions", self.functions),
+            ("bcs", self.bcs),
+            ("forms", self.forms),
+            ("solutions", self.solutions),
+            ("mesh_tags", self.mesh_tags),
+            ("entity_maps", self.entity_maps),
+            ("ufl_symbols", self.ufl_symbols),
+            ("solver_diagnostics", self.solver_diagnostics),
+            ("log_buffer", self.log_buffer),
+        ]:
+            if len(_reg) != 0:
+                raise PostconditionError(
+                    f"cleanup(): {_name} not empty ({len(_reg)} entries)"
+                )
         if self.active_mesh is not None:
             raise PostconditionError(f"cleanup(): active_mesh still set to '{self.active_mesh}'")
 

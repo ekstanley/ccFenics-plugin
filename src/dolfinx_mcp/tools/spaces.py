@@ -8,7 +8,14 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, DOLFINxMCPError, DuplicateNameError, PostconditionError, PreconditionError, handle_tool_errors
+from ..errors import (
+    DOLFINxAPIError,
+    DOLFINxMCPError,
+    DuplicateNameError,
+    PostconditionError,
+    PreconditionError,
+    handle_tool_errors,
+)
 from ..session import FunctionSpaceInfo, SessionState
 
 logger = logging.getLogger(__name__)

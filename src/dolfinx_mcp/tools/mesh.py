@@ -8,7 +8,14 @@ from typing import Any, Callable
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, DOLFINxMCPError, DuplicateNameError, PostconditionError, PreconditionError, handle_tool_errors
+from ..errors import (
+    DOLFINxAPIError,
+    DOLFINxMCPError,
+    DuplicateNameError,
+    PostconditionError,
+    PreconditionError,
+    handle_tool_errors,
+)
 from ..session import EntityMapInfo, MeshInfo, MeshTagsInfo, SessionState
 
 logger = logging.getLogger(__name__)
@@ -52,8 +59,8 @@ async def create_unit_square(
             f"Invalid cell_type '{cell_type}'. Must be one of {sorted(_VALID_CELL_TYPES_2D)}."
         )
 
-    from mpi4py import MPI
     import dolfinx.mesh
+    from mpi4py import MPI
 
     session = _get_session(ctx)
 
@@ -170,8 +177,11 @@ async def create_mesh(
         nx: Number of cells in x direction.
         ny: Number of cells in y direction.
         nz: Number of cells in z direction (for 3D shapes).
-        cell_type: Element type -- "triangle"/"quadrilateral" for 2D, "tetrahedron"/"hexahedron" for 3D.
-        dimensions: Optional dimensions dict. For rectangle: {"width": w, "height": h}. For box: {"x": x, "y": y, "z": z}.
+        cell_type: Element type -- "triangle"/"quadrilateral" for 2D,
+            "tetrahedron"/"hexahedron" for 3D.
+        dimensions: Optional dimensions dict.
+            For rectangle: {"width": w, "height": h}.
+            For box: {"x": x, "y": y, "z": z}.
 
     Returns:
         dict with name, cell_type, num_cells, num_vertices, gdim, tdim,
@@ -199,8 +209,8 @@ async def create_mesh(
     if shape in ("unit_cube", "box") and nz <= 0:
         raise PreconditionError(f"nz must be > 0 for 3D shapes, got {nz}.")
 
-    from mpi4py import MPI
     import dolfinx.mesh
+    from mpi4py import MPI
 
     session = _get_session(ctx)
 
@@ -289,7 +299,10 @@ async def create_mesh(
                     suggestion=f"Use one of: {list(cell_types.keys())}",
                 )
             mesh = dolfinx.mesh.create_box(
-                MPI.COMM_WORLD, [[0, 0, 0], [x_dim, y_dim, z_dim]], [nx, ny, nz], cell_types[cell_type]
+                MPI.COMM_WORLD,
+                [[0, 0, 0], [x_dim, y_dim, z_dim]],
+                [nx, ny, nz],
+                cell_types[cell_type],
             )
 
     except DOLFINxMCPError:
@@ -361,8 +374,10 @@ async def mark_boundaries(
     """Mark boundary facets based on geometric conditions.
 
     Args:
-        markers: List of marker specifications. Each dict has "tag" (int) and "condition" (str).
-                Example: [{"tag": 1, "condition": "x[0] < 1e-14"}, {"tag": 2, "condition": "x[0] > 1.0 - 1e-14"}]
+        markers: List of marker specifications. Each dict has
+            "tag" (int) and "condition" (str). Example:
+            [{"tag": 1, "condition": "x[0] < 1e-14"},
+             {"tag": 2, "condition": "x[0] > 1.0 - 1e-14"}]
         name: Name for the boundary tags object.
         mesh_name: Mesh name. Defaults to the active mesh.
 
@@ -571,8 +586,8 @@ async def create_custom_mesh(
     if not filename:
         raise PreconditionError("filename must be non-empty.")
 
-    from mpi4py import MPI
     import dolfinx.mesh
+    from mpi4py import MPI
 
     session = _get_session(ctx)
 
@@ -959,7 +974,6 @@ async def compute_mesh_quality(
         dict with min_volume, max_volume, mean_volume, std_volume, num_cells,
         and quality_ratio (min/max).
     """
-    import dolfinx.mesh
     import numpy as np
 
     session = _get_session(ctx)

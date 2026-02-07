@@ -8,7 +8,13 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, DOLFINxMCPError, PostconditionError, PreconditionError, handle_tool_errors
+from ..errors import (
+    DOLFINxAPIError,
+    DOLFINxMCPError,
+    PostconditionError,
+    PreconditionError,
+    handle_tool_errors,
+)
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -94,7 +100,6 @@ async def run_custom_code(
         raise PreconditionError("Code string must be non-empty.")
 
     import io
-    import sys
     from contextlib import redirect_stderr, redirect_stdout
 
     session = _get_session(ctx)

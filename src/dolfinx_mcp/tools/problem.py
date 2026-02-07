@@ -17,8 +17,6 @@ from .._app import mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
-    DuplicateNameError,
-    InvalidUFLExpressionError,
     PostconditionError,
     PreconditionError,
     handle_tool_errors,
@@ -148,8 +146,8 @@ async def define_variational_form(
     if not linear or not linear.strip():
         raise PreconditionError("linear form expression must be non-empty.")
 
-    import ufl
     import dolfinx.fem
+    import ufl
 
     session = _get_session(ctx)
 
@@ -266,9 +264,9 @@ async def apply_boundary_condition(
     if sub_space is not None and sub_space < 0:
         raise PreconditionError(f"sub_space must be >= 0, got {sub_space}.")
 
-    import numpy as np
     import dolfinx.fem
     import dolfinx.mesh
+    import numpy as np
 
     session = _get_session(ctx)
 

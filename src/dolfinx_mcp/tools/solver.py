@@ -9,7 +9,14 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, DOLFINxMCPError, PostconditionError, PreconditionError, SolverError, handle_tool_errors
+from ..errors import (
+    DOLFINxAPIError,
+    DOLFINxMCPError,
+    PostconditionError,
+    PreconditionError,
+    SolverError,
+    handle_tool_errors,
+)
 from ..session import SessionState, SolutionInfo
 
 logger = logging.getLogger(__name__)
