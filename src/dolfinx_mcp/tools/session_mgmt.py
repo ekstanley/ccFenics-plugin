@@ -191,6 +191,13 @@ async def assemble(
     # Build UFL namespace from session
     ufl_namespace = build_namespace(session)
 
+    # Add trial/test functions if a function space is available
+    import ufl
+    if session.function_spaces:
+        space_info = next(iter(session.function_spaces.values()))
+        ufl_namespace["u"] = ufl.TrialFunction(space_info.space)
+        ufl_namespace["v"] = ufl.TestFunction(space_info.space)
+
     # Evaluate form expression
     try:
         ufl_form = safe_evaluate(form, ufl_namespace)
@@ -218,22 +225,24 @@ async def assemble(
             return {"value": scalar_val}
 
         elif target == "vector":
+            from petsc4py import PETSc
+
             fem_form = dolfinx.fem.form(ufl_form)
             vec = dolfinx.fem.petsc.assemble_vector(fem_form)
             vec.ghostUpdate(
-                addv=dolfinx.cpp.la.InsertMode.add,
-                mode=dolfinx.cpp.la.ScatterMode.reverse,
+                addv=PETSc.InsertMode.ADD,
+                mode=PETSc.ScatterMode.REVERSE,
             )
 
             if apply_bcs:
-                # Apply BCs from session
-                bcs = list(session.bcs.values())
-                if bcs:
-                    dolfinx.fem.petsc.set_bc(vec, bcs)
+                # Apply BCs from session (extract raw DirichletBC from BCInfo)
+                raw_bcs = [bc_info.bc for bc_info in session.bcs.values()]
+                if raw_bcs:
+                    dolfinx.fem.petsc.set_bc(vec, raw_bcs)
 
             vec.ghostUpdate(
-                addv=dolfinx.cpp.la.InsertMode.insert,
-                mode=dolfinx.cpp.la.ScatterMode.forward,
+                addv=PETSc.InsertMode.INSERT,
+                mode=PETSc.ScatterMode.FORWARD,
             )
 
             norm = vec.norm()
@@ -245,8 +254,8 @@ async def assemble(
 
         elif target == "matrix":
             fem_form = dolfinx.fem.form(ufl_form)
-            bcs = list(session.bcs.values()) if apply_bcs else []
-            mat = dolfinx.fem.petsc.assemble_matrix(fem_form, bcs=bcs)
+            raw_bcs = [bc_info.bc for bc_info in session.bcs.values()] if apply_bcs else []
+            mat = dolfinx.fem.petsc.assemble_matrix(fem_form, bcs=raw_bcs)
             mat.assemble()
 
             dims = mat.getSize()

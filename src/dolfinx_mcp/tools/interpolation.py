@@ -405,6 +405,7 @@ async def project(
         problem = dolfinx.fem.petsc.LinearProblem(
             a_form, L_form, bcs=[],
             petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+            petsc_options_prefix="project",
         )
         uh = problem.solve()
     except DOLFINxMCPError:

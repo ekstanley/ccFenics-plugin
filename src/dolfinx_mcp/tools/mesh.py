@@ -516,7 +516,10 @@ async def refine_mesh(
         )
 
     try:
-        refined_mesh = dolfinx.mesh.refine(mesh_info.mesh)
+        mesh_info.mesh.topology.create_entities(1)
+        result = dolfinx.mesh.refine(mesh_info.mesh)
+        # DOLFINx 0.10+ returns (mesh, parent_cell_map) tuple
+        refined_mesh = result[0] if isinstance(result, tuple) else result
     except DOLFINxMCPError:
         raise
     except Exception as exc:
@@ -753,9 +756,12 @@ async def create_submesh(
                 suggestion=f"Available tags: {tags_info.unique_tags}",
             )
 
-        submesh, entity_map = dolfinx.mesh.create_submesh(
+        # DOLFINx 0.10+ returns (submesh, entity_map, vertex_map, geom_map)
+        result = dolfinx.mesh.create_submesh(
             mesh, tags_info.dimension, entities
         )
+        submesh = result[0]
+        entity_map = result[1]
 
     except DOLFINxMCPError:
         raise

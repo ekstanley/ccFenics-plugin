@@ -537,6 +537,11 @@ class SessionState:
         for mname in dep_maps:
             del self.entity_maps[mname]
 
+        # Remove forms and ufl_symbols that depend on deleted spaces
+        if dep_spaces:
+            self.forms.clear()
+            self.ufl_symbols.clear()
+
         del self.meshes[name]
         if self.active_mesh == name:
             self.active_mesh = None

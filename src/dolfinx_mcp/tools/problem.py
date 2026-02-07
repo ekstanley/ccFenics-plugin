@@ -61,12 +61,26 @@ def _make_boundary_fn(expr: str) -> Callable[[Any], Any]:
 
 
 def _eval_bc_expression(expr: str, x: Any, ns: dict[str, Any]) -> Any:
-    """Evaluate a BC value expression at coordinate arrays."""
+    """Evaluate a BC value expression at coordinate arrays.
+
+    Overrides UFL math functions with numpy equivalents because BC
+    interpolation operates on coordinate arrays, not symbolic UFL expressions.
+    """
     import numpy as np
 
     local_ns = dict(ns)
     local_ns["x"] = x
     local_ns["np"] = np
+    # Override UFL math functions with numpy equivalents for array evaluation
+    local_ns["sin"] = np.sin
+    local_ns["cos"] = np.cos
+    local_ns["exp"] = np.exp
+    local_ns["sqrt"] = np.sqrt
+    local_ns["abs"] = np.abs
+    local_ns["log"] = np.log
+    local_ns["tan"] = np.tan
+    local_ns["pi"] = np.pi
+    local_ns["e"] = np.e
     local_ns["__builtins__"] = {}
     result = _restricted_eval(expr, local_ns)
     if isinstance(result, (int, float)):
@@ -341,10 +355,22 @@ async def apply_boundary_condition(
         )
 
     # Create DirichletBC
-    if sub_space is not None:
-        bc = dolfinx.fem.dirichletbc(bc_value, dofs, V_dof)
-    else:
-        bc = dolfinx.fem.dirichletbc(bc_value, dofs, V)
+    # DOLFINx 0.10+: Function overload takes (func, dofs) without V;
+    # Constant overload takes (constant, dofs, V).
+    try:
+        if isinstance(bc_value, dolfinx.fem.Function):
+            bc = dolfinx.fem.dirichletbc(bc_value, dofs)
+        elif sub_space is not None:
+            bc = dolfinx.fem.dirichletbc(bc_value, dofs, V_dof)
+        else:
+            bc = dolfinx.fem.dirichletbc(bc_value, dofs, V)
+    except DOLFINxMCPError:
+        raise
+    except Exception as exc:
+        raise DOLFINxAPIError(
+            f"Failed to create DirichletBC: {exc}",
+            suggestion="Check BC value and boundary specification.",
+        ) from exc
 
     # Generate name if not provided
     if name is None:
