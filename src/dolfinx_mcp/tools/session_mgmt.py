@@ -8,7 +8,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, DOLFINxMCPError, PreconditionError, handle_tool_errors
+from ..errors import DOLFINxAPIError, DOLFINxMCPError, PostconditionError, PreconditionError, handle_tool_errors
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -239,3 +239,107 @@ async def assemble(
             f"Assembly failed: {e}",
             suggestion="Check form expression and boundary conditions.",
         ) from e
+
+
+_VALID_OBJECT_TYPES = frozenset({
+    "mesh", "space", "function", "bc", "form",
+    "solution", "mesh_tags", "entity_map",
+})
+
+# Mapping from object_type to (registry_attr, display_name)
+_REGISTRY_MAP = {
+    "function": ("functions", "Function"),
+    "bc": ("bcs", "Boundary condition"),
+    "form": ("forms", "Form"),
+    "solution": ("solutions", "Solution"),
+    "mesh_tags": ("mesh_tags", "Mesh tags"),
+    "entity_map": ("entity_maps", "Entity map"),
+}
+
+
+@mcp.tool()
+@handle_tool_errors
+async def remove_object(
+    name: str,
+    object_type: str,
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """Remove a named object from the session.
+
+    For meshes, this cascades: all dependent spaces, functions, BCs,
+    solutions, mesh tags, and entity maps are also removed. For spaces,
+    dependent functions, BCs, and solutions are removed. Leaf types
+    (function, bc, form, solution, mesh_tags, entity_map) are removed
+    directly.
+
+    Args:
+        name: Name of the object to remove.
+        object_type: One of: mesh, space, function, bc, form, solution,
+            mesh_tags, entity_map.
+
+    Returns:
+        dict with removed object name, type, and cascade information.
+    """
+    # Preconditions: validate before any imports or session access
+    if not name or not name.strip():
+        raise PreconditionError("name must be non-empty.")
+    if object_type not in _VALID_OBJECT_TYPES:
+        raise PreconditionError(
+            f"object_type must be one of {sorted(_VALID_OBJECT_TYPES)}, "
+            f"got '{object_type}'."
+        )
+
+    session = _get_session(ctx)
+
+    removed = {"name": name, "object_type": object_type}
+
+    try:
+        if object_type == "mesh":
+            # Cascade deletion via existing session method
+            session.remove_mesh(name)
+            removed["cascade"] = True
+
+        elif object_type == "space":
+            if name not in session.function_spaces:
+                raise DOLFINxAPIError(
+                    f"Function space '{name}' not found.",
+                    suggestion="Check available spaces with get_session_state.",
+                )
+            session._remove_space_dependents(name)
+            del session.function_spaces[name]
+            removed["cascade"] = True
+
+        else:
+            # Leaf types: direct deletion
+            registry_attr, display_name = _REGISTRY_MAP[object_type]
+            registry = getattr(session, registry_attr)
+            if name not in registry:
+                raise DOLFINxAPIError(
+                    f"{display_name} '{name}' not found.",
+                    suggestion="Check available objects with get_session_state.",
+                )
+            del registry[name]
+            removed["cascade"] = False
+
+    except DOLFINxMCPError:
+        raise
+    except Exception as exc:
+        raise DOLFINxAPIError(
+            f"Failed to remove {object_type} '{name}': {exc}",
+            suggestion="Check the object exists and try again.",
+        ) from exc
+
+    # Postcondition: object no longer in its registry
+    registry_attr = {
+        "mesh": "meshes", "space": "function_spaces",
+    }.get(object_type, _REGISTRY_MAP.get(object_type, (None,))[0])
+    if registry_attr and name in getattr(session, registry_attr):
+        raise PostconditionError(
+            f"remove_object(): '{name}' still present in {registry_attr} after removal."
+        )
+
+    if __debug__:
+        session.check_invariants()
+
+    logger.info("Removed %s '%s'", object_type, name)
+    return removed

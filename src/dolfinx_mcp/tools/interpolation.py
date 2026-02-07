@@ -13,6 +13,7 @@ from ..errors import (
     DOLFINxMCPError,
     PostconditionError,
     PreconditionError,
+    SolverError,
     handle_tool_errors,
 )
 from ..session import SessionState
@@ -306,4 +307,134 @@ async def create_discrete_operator(
         "target_space": target_space,
         "matrix_size": {"rows": int(rows), "cols": int(cols)},
         "nnz": int(nnz),
+    }
+
+
+@mcp.tool()
+@handle_tool_errors
+async def project(
+    name: str,
+    target_space: str,
+    expression: str | None = None,
+    source_function: str | None = None,
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """L2-project an expression or function onto a target function space.
+
+    Solves the mass matrix system M*u = b where M = inner(u,v)*dx and
+    b = inner(source, v)*dx. This is useful when interpolation is not
+    available (e.g., projecting expressions that cannot be point-evaluated).
+
+    Exactly one of ``expression`` or ``source_function`` must be provided.
+
+    Args:
+        name: Name for the projected function result.
+        target_space: Name of the target function space.
+        expression: UFL expression string to project.
+        source_function: Name of an existing function to project.
+
+    Returns:
+        dict with name, l2_norm, min_value, max_value of the projection.
+    """
+    # Preconditions: validate before lazy imports
+    if not name or not name.strip():
+        raise PreconditionError("name must be non-empty.")
+    if expression is not None and source_function is not None:
+        raise PreconditionError(
+            "Exactly one of 'expression' or 'source_function' must be provided, not both."
+        )
+    if expression is None and source_function is None:
+        raise PreconditionError(
+            "Exactly one of 'expression' or 'source_function' must be provided."
+        )
+
+    import dolfinx.fem
+    import dolfinx.fem.petsc
+    import numpy as np
+    import ufl
+
+    session = _get_session(ctx)
+
+    # Resolve target space via accessor
+    space_info = session.get_space(target_space)
+    V = space_info.space
+
+    # Build test/trial functions
+    u = ufl.TrialFunction(V)
+    v = ufl.TestFunction(V)
+
+    # Build the source term for the RHS
+    if source_function is not None:
+        fn_info = session.get_function(source_function)
+        source = fn_info.function
+    else:
+        # Evaluate UFL expression string
+        from ..ufl_context import build_namespace, safe_evaluate
+
+        ufl_namespace = build_namespace(session)
+        try:
+            source = safe_evaluate(expression, ufl_namespace)
+        except DOLFINxMCPError:
+            raise
+        except Exception as exc:
+            raise DOLFINxAPIError(
+                f"Expression evaluation failed: {exc}",
+                suggestion="Check UFL expression syntax.",
+            ) from exc
+
+    # Assemble and solve: M*u_h = b
+    a_form = ufl.inner(u, v) * ufl.dx
+    L_form = ufl.inner(source, v) * ufl.dx
+
+    try:
+        problem = dolfinx.fem.petsc.LinearProblem(
+            a_form, L_form, bcs=[],
+            petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+        )
+        uh = problem.solve()
+    except DOLFINxMCPError:
+        raise
+    except Exception as exc:
+        raise SolverError(
+            f"L2 projection solve failed: {exc}",
+            suggestion="Check expression/function compatibility with target space.",
+        ) from exc
+
+    # Postcondition: result must be finite
+    if not np.isfinite(uh.x.array).all():
+        raise PostconditionError(
+            "Projection produced NaN/Inf values.",
+            suggestion="Check source expression/function and target space compatibility.",
+        )
+
+    # Compute statistics
+    l2_norm = float(np.linalg.norm(uh.x.array))
+    min_val = float(np.min(uh.x.array))
+    max_val = float(np.max(uh.x.array))
+
+    # Postcondition: L2 norm must be non-negative
+    if l2_norm < 0:
+        raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
+
+    # Store result as function in session
+    from ..session import FunctionInfo
+    session.functions[name] = FunctionInfo(
+        name=name,
+        function=uh,
+        space_name=target_space,
+        description=f"L2 projection of {'expression' if expression else source_function}",
+    )
+
+    if __debug__:
+        session.check_invariants()
+
+    logger.info(
+        "Projected %s into '%s' (space: %s), L2 norm=%.6e",
+        expression or source_function, name, target_space, l2_norm,
+    )
+    return {
+        "name": name,
+        "l2_norm": round(l2_norm, 8),
+        "min_value": round(min_val, 8),
+        "max_value": round(max_val, 8),
     }

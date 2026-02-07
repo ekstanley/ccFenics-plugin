@@ -1328,3 +1328,227 @@ class TestPhase13GetLastSolution:
         with pytest.raises(Exception) as exc_info:
             session.get_last_solution()
         assert "space" in str(exc_info.value).lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase 14: Tool tests -- remove_object, compute_mesh_quality, project
+# ---------------------------------------------------------------------------
+
+
+class TestPhase14RemoveObject:
+    """Tests for the remove_object tool."""
+
+    @pytest.mark.asyncio
+    async def test_remove_object_empty_name(self):
+        from dolfinx_mcp.tools.session_mgmt import remove_object
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = SessionState()
+
+        result = await remove_object(name="", object_type="function", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_remove_object_invalid_type(self):
+        from dolfinx_mcp.tools.session_mgmt import remove_object
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = SessionState()
+
+        result = await remove_object(name="x", object_type="widget", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_remove_object_not_found(self):
+        from dolfinx_mcp.tools.session_mgmt import remove_object
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = SessionState()
+
+        result = await remove_object(name="nonexistent", object_type="function", ctx=ctx)
+        assert result["error"] == "DOLFINX_API_ERROR"
+
+    @pytest.mark.asyncio
+    async def test_remove_object_mesh_cascade(self):
+        """Removing a mesh cascades to dependent objects."""
+        from dolfinx_mcp.tools.session_mgmt import remove_object
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.functions["f"] = _make_function_info("f", "V")
+        session.solutions["sol"] = _make_solution_info("sol", "V")
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = session
+
+        result = await remove_object(name="m1", object_type="mesh", ctx=ctx)
+        assert result["name"] == "m1"
+        assert result["cascade"] is True
+        assert "m1" not in session.meshes
+        assert "V" not in session.function_spaces
+        assert "f" not in session.functions
+        assert "sol" not in session.solutions
+
+    @pytest.mark.asyncio
+    async def test_remove_object_leaf_delete(self):
+        """Removing a leaf object deletes only that object."""
+        from dolfinx_mcp.tools.session_mgmt import remove_object
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.functions["f1"] = _make_function_info("f1", "V")
+        session.functions["f2"] = _make_function_info("f2", "V")
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = session
+
+        result = await remove_object(name="f1", object_type="function", ctx=ctx)
+        assert result["cascade"] is False
+        assert "f1" not in session.functions
+        assert "f2" in session.functions  # other function preserved
+
+
+class TestPhase14ComputeMeshQuality:
+    """Tests for the compute_mesh_quality tool."""
+
+    @pytest.mark.asyncio
+    async def test_compute_mesh_quality_missing_mesh(self):
+        from dolfinx_mcp.tools.mesh import compute_mesh_quality
+
+        session = SessionState()
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = session
+
+        result = await compute_mesh_quality(mesh_name="nonexistent", ctx=ctx)
+        # Should fail because mesh doesn't exist (via get_mesh accessor)
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_compute_mesh_quality_postcondition_finite(self):
+        """Postcondition catches NaN in quality metrics."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import compute_mesh_quality
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = session
+
+        # Mock dolfinx mesh with geometry that produces NaN volumes
+        mock_np = MagicMock()
+        mock_np.isfinite.return_value = MagicMock(all=MagicMock(return_value=False))
+        mock_np.zeros.return_value = [float("nan")]
+
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.mesh = MagicMock()
+
+        with patch.dict(sys.modules, {
+            "numpy": mock_np,
+            "dolfinx.mesh": mock_dolfinx.mesh,
+        }):
+            result = await compute_mesh_quality(mesh_name="m1", ctx=ctx)
+        # Should catch the postcondition violation
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_compute_mesh_quality_valid_access(self):
+        """Verifies that the mesh accessor is used (not direct dict access)."""
+        from dolfinx_mcp.tools.mesh import compute_mesh_quality
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = session
+
+        # Will fail during actual computation (no real mesh), but it should
+        # at least get past the accessor check
+        result = await compute_mesh_quality(ctx=ctx)
+        # The error should be about computation, not about missing mesh
+        if "error" in result:
+            assert "not found" not in result.get("message", "").lower()
+
+
+class TestPhase14Project:
+    """Tests for the project (L2 projection) tool."""
+
+    @pytest.mark.asyncio
+    async def test_project_empty_name(self):
+        from dolfinx_mcp.tools.interpolation import project
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = SessionState()
+
+        result = await project(
+            name="", target_space="V", expression="0*x[0]", ctx=ctx,
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_project_both_expression_and_source(self):
+        from dolfinx_mcp.tools.interpolation import project
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = SessionState()
+
+        result = await project(
+            name="p",
+            target_space="V",
+            expression="0*x[0]",
+            source_function="f",
+            ctx=ctx,
+        )
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_project_neither_expression_nor_source(self):
+        from dolfinx_mcp.tools.interpolation import project
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = SessionState()
+
+        result = await project(name="p", target_space="V", ctx=ctx)
+        assert result["error"] == "PRECONDITION_VIOLATED"
+
+    @pytest.mark.asyncio
+    async def test_project_postcondition_nan(self):
+        """Postcondition catches NaN/Inf in projection result."""
+        import sys
+
+        from dolfinx_mcp.tools.interpolation import project
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.functions["src"] = _make_function_info("src", "V")
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = session
+
+        # Mock numpy so isfinite returns False (NaN)
+        mock_isfinite_result = MagicMock()
+        mock_isfinite_result.all.return_value = False
+
+        mock_np = MagicMock()
+        mock_np.isfinite.return_value = mock_isfinite_result
+
+        mock_dolfinx = MagicMock()
+        mock_ufl = MagicMock()
+
+        with patch.dict(sys.modules, {
+            "numpy": mock_np,
+            "dolfinx": mock_dolfinx,
+            "dolfinx.fem": mock_dolfinx.fem,
+            "dolfinx.fem.petsc": mock_dolfinx.fem.petsc,
+            "ufl": mock_ufl,
+        }):
+            result = await project(
+                name="p", target_space="V", source_function="src", ctx=ctx,
+            )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"

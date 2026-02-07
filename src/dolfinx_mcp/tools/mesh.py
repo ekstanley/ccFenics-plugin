@@ -852,3 +852,120 @@ async def manage_mesh_tags(
             "unique_tags": tags_info.unique_tags,
             "tag_counts": tag_counts,
         }
+
+
+@mcp.tool()
+@handle_tool_errors
+async def compute_mesh_quality(
+    mesh_name: str | None = None,
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """Compute mesh quality metrics (cell volumes).
+
+    Calculates min, max, mean, and standard deviation of cell volumes
+    for the specified mesh. All volumes should be positive for a valid mesh.
+
+    Args:
+        mesh_name: Name of the mesh. If None, uses the active mesh.
+
+    Returns:
+        dict with min_volume, max_volume, mean_volume, std_volume, num_cells,
+        and quality_ratio (min/max).
+    """
+    import dolfinx.mesh
+    import numpy as np
+
+    session = _get_session(ctx)
+    mesh_info = session.get_mesh(mesh_name)
+    msh = mesh_info.mesh
+
+    try:
+        # Compute cell volumes using DOLFINx geometry API
+        tdim = msh.topology.dim
+        num_cells = msh.topology.index_map(tdim).size_local
+
+        # Create entity-to-geometry connectivity
+        msh.topology.create_connectivity(tdim, 0)
+
+        # Get geometry and compute volumes per cell
+        geometry = msh.geometry.x
+        cell_volumes = np.zeros(num_cells)
+
+        for cell_idx in range(num_cells):
+            # Get vertex coordinates for this cell
+            cell_entities = msh.geometry.dofmap[cell_idx]
+            coords = geometry[cell_entities]
+
+            if tdim == 2:
+                # Triangle area via cross product
+                if len(cell_entities) == 3:
+                    v1 = coords[1] - coords[0]
+                    v2 = coords[2] - coords[0]
+                    cell_volumes[cell_idx] = 0.5 * abs(
+                        v1[0] * v2[1] - v1[1] * v2[0]
+                    )
+                else:
+                    # Quadrilateral: split into two triangles
+                    v1 = coords[1] - coords[0]
+                    v2 = coords[2] - coords[0]
+                    v3 = coords[3] - coords[0]
+                    cell_volumes[cell_idx] = 0.5 * (
+                        abs(v1[0] * v2[1] - v1[1] * v2[0])
+                        + abs(v2[0] * v3[1] - v2[1] * v3[0])
+                    )
+            elif tdim == 3:
+                # Tetrahedron volume
+                v1 = coords[1] - coords[0]
+                v2 = coords[2] - coords[0]
+                v3 = coords[3] - coords[0]
+                cell_volumes[cell_idx] = abs(
+                    np.dot(v1, np.cross(v2, v3))
+                ) / 6.0
+            elif tdim == 1:
+                # Line segment length
+                cell_volumes[cell_idx] = np.linalg.norm(coords[1] - coords[0])
+
+    except DOLFINxMCPError:
+        raise
+    except Exception as exc:
+        raise DOLFINxAPIError(
+            f"Failed to compute mesh quality for '{mesh_info.name}': {exc}",
+            suggestion="Check mesh integrity and topology.",
+        ) from exc
+
+    # Postcondition: all metrics must be finite
+    if not np.isfinite(cell_volumes).all():
+        raise PostconditionError(
+            "Mesh quality metrics contain NaN/Inf.",
+            suggestion="Check mesh geometry for degenerate cells.",
+        )
+
+    # Postcondition: all cell volumes must be > 0
+    if not (cell_volumes > 0).all():
+        raise PostconditionError(
+            "Some cell volumes are non-positive, indicating degenerate cells.",
+            suggestion="Check mesh for inverted or zero-area elements.",
+        )
+
+    min_vol = float(np.min(cell_volumes))
+    max_vol = float(np.max(cell_volumes))
+    mean_vol = float(np.mean(cell_volumes))
+    std_vol = float(np.std(cell_volumes))
+    quality_ratio = min_vol / max_vol if max_vol > 0 else 0.0
+
+    if __debug__:
+        session.check_invariants()
+
+    logger.info(
+        "Mesh quality for '%s': vol_range=[%.2e, %.2e], ratio=%.4f",
+        mesh_info.name, min_vol, max_vol, quality_ratio,
+    )
+    return {
+        "mesh_name": mesh_info.name,
+        "num_cells": int(num_cells),
+        "min_volume": round(min_vol, 10),
+        "max_volume": round(max_vol, 10),
+        "mean_volume": round(mean_vol, 10),
+        "std_volume": round(std_vol, 10),
+        "quality_ratio": round(quality_ratio, 6),
+    }

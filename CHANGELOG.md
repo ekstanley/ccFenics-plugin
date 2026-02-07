@@ -6,6 +6,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.13] - 2026-02-06
+
+### Added
+
+#### Design-by-Contract Phase 14: Missing Tool Implementation
+- **`remove_object` tool (session_mgmt.py)**: Remove any named object from session by type.
+  Mesh removal cascades (delegates to `session.remove_mesh()`), space removal cascades
+  (delegates to `_remove_space_dependents()`), leaf types removed directly. Preconditions:
+  name non-empty, object_type in valid enum. Postcondition: object absent from registry
+- **`compute_mesh_quality` tool (mesh.py)**: Compute cell volume statistics (min, max, mean,
+  std, quality_ratio=min/max) for a mesh. Precondition: mesh exists (via accessor).
+  Postconditions: all metrics finite, all cell volumes > 0
+- **`project` tool (interpolation.py)**: L2-project an expression or function onto a target
+  space via mass matrix solve (M*u = b using `LinearProblem`). Preconditions: name non-empty,
+  exactly one of expression/source_function. Postconditions: result finite, L2 norm >= 0
+
+### Testing
+- 12 new contract tests (100 contract tests total, 139 local + 13 Docker = 152 total)
+- Phase 14: remove_object empty_name/invalid_type/not_found/mesh_cascade/leaf_delete (5),
+  compute_mesh_quality missing_mesh/postcondition_finite/valid_access (3),
+  project empty_name/both_args/neither_arg/postcondition_nan (4)
+
+---
+
 ## [0.1.12] - 2026-02-06
 
 ### Changed
@@ -407,4 +431,16 @@ POST: name == registry key   get_entity_map               PostconditionError (de
 POST: parent/child in meshes get_entity_map               PostconditionError (debug)
 POST: space in fn_spaces     get_last_solution            PostconditionError (debug)
 USE:  get_last_solution()    compute_error et al.         Replaces list()[-1]
+PRE: name non-empty          remove_object                PreconditionError
+PRE: object_type valid       remove_object                PreconditionError
+POST: object removed         remove_object                PostconditionError
+INV: check after remove      remove_object                if __debug__
+PRE: mesh exists             compute_mesh_quality         get_mesh accessor
+POST: metrics finite         compute_mesh_quality         PostconditionError
+POST: volumes > 0            compute_mesh_quality         PostconditionError
+PRE: expression xor source   project                     PreconditionError
+PRE: name non-empty          project                     PreconditionError
+POST: result finite          project                     PostconditionError
+POST: l2_norm >= 0           project                     PostconditionError
+INV: check after project     project                     if __debug__
 ```
