@@ -6,6 +6,55 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.0] - 2026-02-06
+
+### Documentation
+
+#### Design-by-Contract Phase 16: Documentation Finalization
+- **Version milestone**: v0.2.0 marks completion of the DbC hardening effort
+  (Phases 1-16)
+- **Tool inventory**: 31 tools across 6 modules, all with full DbC enforcement
+- **Correspondence table**: 97 entries mapping contracts to code locations
+- **Test summary**: 100 contract tests + 24 Docker integration + 39 core = 163 total
+
+### Tool Inventory (31 tools, 6 modules)
+
+| Module | Tool | PRE | POST | INV |
+|--------|------|-----|------|-----|
+| session_mgmt | get_session_state | - | - | - |
+| session_mgmt | reset_session | - | - | 1 |
+| session_mgmt | run_custom_code | 1 | - | 1 |
+| session_mgmt | assemble | 1 | 1 | - |
+| session_mgmt | remove_object | 2 | 1 | 1 |
+| mesh | create_unit_square | 3 | - | 1 |
+| mesh | get_mesh_info | - | - | - |
+| mesh | create_mesh | 4 | - | 1 |
+| mesh | mark_boundaries | 3 | - | 1 |
+| mesh | refine_mesh | - | 1 | 1 |
+| mesh | create_custom_mesh | 1 | 1 | 1 |
+| mesh | create_submesh | 2 | - | 1 |
+| mesh | manage_mesh_tags | 1 | - | 1 |
+| mesh | compute_mesh_quality | 1 | 2 | 1 |
+| spaces | create_function_space | 1 | - | 1 |
+| spaces | create_mixed_space | 1 | - | 1 |
+| interpolation | interpolate | - | 1 | 1 |
+| interpolation | create_discrete_operator | 1 | - | 1 |
+| interpolation | project | 3 | 2 | 1 |
+| problem | set_material_properties | 1 | - | 1 |
+| problem | define_variational_form | 2 | - | 1 |
+| problem | apply_boundary_condition | 1 | - | 1 |
+| solver | solve | 1 | 2 | 1 |
+| solver | solve_time_dependent | 3 | 1 | 1 |
+| solver | get_solver_diagnostics | - | 1 | - |
+| postprocess | compute_error | 2 | 2 | - |
+| postprocess | export_solution | 1 | - | - |
+| postprocess | evaluate_solution | 1 | 1 | - |
+| postprocess | compute_functionals | 1 | 1 | - |
+| postprocess | query_point_values | 2 | 1 | - |
+| postprocess | plot_solution | 1 | - | - |
+
+---
+
 ## [0.1.14] - 2026-02-06
 
 ### Testing
