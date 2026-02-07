@@ -134,6 +134,9 @@ async def get_mesh_info(
             suggestion="Check mesh geometry for degenerate elements.",
         )
 
+    if __debug__:
+        session.check_invariants()
+
     result = info.summary()
     result["bounding_box"] = {"min": bbox_min, "max": bbox_max}
     result["active"] = (info.name == session.active_mesh)

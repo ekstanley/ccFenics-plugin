@@ -28,6 +28,10 @@ async def get_session_state(
     Use this to inspect what objects are available and their properties.
     """
     session = _get_session(ctx)
+
+    if __debug__:
+        session.check_invariants()
+
     return session.overview()
 
 
@@ -195,6 +199,8 @@ async def assemble(
                     "Assembly produced NaN/Inf scalar value.",
                     suggestion="Check form expression and boundary conditions.",
                 )
+            if __debug__:
+                session.check_invariants()
             return {"value": scalar_val}
 
         elif target == "vector":
@@ -219,6 +225,8 @@ async def assemble(
             norm = vec.norm()
             size = vec.getSize()
 
+            if __debug__:
+                session.check_invariants()
             return {"norm": float(norm), "size": int(size)}
 
         elif target == "matrix":
@@ -230,6 +238,8 @@ async def assemble(
             dims = mat.getSize()
             nnz = mat.getInfo()["nz_used"]
 
+            if __debug__:
+                session.check_invariants()
             return {"dims": list(dims), "nnz": int(nnz)}
 
     except DOLFINxMCPError:

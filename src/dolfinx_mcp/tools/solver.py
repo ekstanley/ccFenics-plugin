@@ -416,6 +416,9 @@ async def get_solver_diagnostics(
     if l2_norm < 0:
         raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
 
+    if __debug__:
+        session.check_invariants()
+
     return {
         "solution_name": sol_info.name,
         "space_name": sol_info.space_name,

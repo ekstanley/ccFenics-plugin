@@ -6,6 +6,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.2] - 2026-02-06
+
+### Added
+
+#### Design-by-Contract Phase 18: Defensive Invariant Checks
+- **12 new `if __debug__: session.check_invariants()` sites** added to 10 tools
+  that previously lacked debug invariant verification, bringing total from 23 to 35
+- Every `@mcp.tool()` function now has at least one debug invariant check
+- Zero production overhead (`python -O` strips debug blocks)
+- Correspondence table: 123 entries (was 111)
+
+**Tools with new invariant checks:**
+- `compute_error`, `export_solution`, `evaluate_solution`, `compute_functionals`,
+  `query_point_values`, `plot_solution` (postprocess.py)
+- `get_session_state`, `assemble` (3 return paths) (session_mgmt.py)
+- `get_solver_diagnostics` (solver.py)
+- `get_mesh_info` (mesh.py)
+
+---
+
 ## [0.2.1] - 2026-02-06
 
 ### Added
@@ -51,13 +71,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 | Module | Tool | PRE | POST | INV |
 |--------|------|-----|------|-----|
-| session_mgmt | get_session_state | - | - | - |
+| session_mgmt | get_session_state | - | - | 1 |
 | session_mgmt | reset_session | - | - | 1 |
 | session_mgmt | run_custom_code | 1 | - | 1 |
-| session_mgmt | assemble | 1 | 1 | - |
+| session_mgmt | assemble | 1 | 1 | 1 |
 | session_mgmt | remove_object | 2 | 1 | 1 |
 | mesh | create_unit_square | 3 | 1 | 1 |
-| mesh | get_mesh_info | - | 1 | - |
+| mesh | get_mesh_info | - | 1 | 1 |
 | mesh | create_mesh | 4 | 1 | 1 |
 | mesh | mark_boundaries | 3 | 1 | 1 |
 | mesh | refine_mesh | - | 1 | 1 |
@@ -75,13 +95,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 | problem | apply_boundary_condition | 1 | - | 1 |
 | solver | solve | 1 | 2 | 1 |
 | solver | solve_time_dependent | 3 | 1 | 1 |
-| solver | get_solver_diagnostics | - | 1 | - |
-| postprocess | compute_error | 2 | 2 | - |
-| postprocess | export_solution | 1 | 1 | - |
-| postprocess | evaluate_solution | 1 | 1 | - |
-| postprocess | compute_functionals | 1 | 1 | - |
-| postprocess | query_point_values | 2 | 1 | - |
-| postprocess | plot_solution | 1 | 1 | - |
+| solver | get_solver_diagnostics | - | 1 | 1 |
+| postprocess | compute_error | 2 | 2 | 1 |
+| postprocess | export_solution | 1 | 1 | 1 |
+| postprocess | evaluate_solution | 1 | 1 | 1 |
+| postprocess | compute_functionals | 1 | 1 | 1 |
+| postprocess | query_point_values | 2 | 1 | 1 |
+| postprocess | plot_solution | 1 | 1 | 1 |
 
 ---
 
@@ -553,4 +573,14 @@ POST: form not None           define_variational_form      PostconditionError
 POST: material finite         set_material_properties      PostconditionError
 POST: file_size > 0           export_solution              PostconditionError
 POST: file exists             plot_solution                PostconditionError
+INV: check after compute      compute_error                if __debug__
+INV: check after export       export_solution              if __debug__
+INV: check after evaluate     evaluate_solution            if __debug__
+INV: check after functionals  compute_functionals          if __debug__
+INV: check after query        query_point_values           if __debug__
+INV: check after plot         plot_solution                if __debug__
+INV: check after overview     get_session_state            if __debug__
+INV: check after assemble     assemble (3 paths)           if __debug__
+INV: check after diagnostics  get_solver_diagnostics       if __debug__
+INV: check after mesh_info    get_mesh_info                if __debug__
 ```

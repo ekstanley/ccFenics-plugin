@@ -130,6 +130,9 @@ async def compute_error(
     if error_val < 0:
         raise PostconditionError(f"Error norm must be non-negative, got {error_val}.")
 
+    if __debug__:
+        session.check_invariants()
+
     logger.info("Computed %s error: %.6e", norm_type, error_val)
     return {
         "norm_type": norm_type.upper(),
@@ -227,6 +230,9 @@ async def export_solution(
             suggestion="Check that functions contain data and output path is writable.",
         )
 
+    if __debug__:
+        session.check_invariants()
+
     logger.info("Exported %d functions to %s (%s)", len(funcs_to_export), filepath, fmt)
     return {
         "file_path": filepath,
@@ -314,6 +320,9 @@ async def evaluate_solution(
                 "value": None,
             })
 
+    if __debug__:
+        session.check_invariants()
+
     logger.info("Evaluated solution at %d points", len(points))
     return {
         "function_name": function_name or session.get_last_solution().name,
@@ -382,6 +391,9 @@ async def compute_functionals(
                 f"Failed to compute functional '{expr_str}': {exc}",
                 suggestion="Check expression syntax. Available: dx, ds, inner, grad, etc.",
             ) from exc
+
+    if __debug__:
+        session.check_invariants()
 
     logger.info("Computed %d functionals", len(expressions))
     return {
@@ -474,6 +486,9 @@ async def query_point_values(
                 "cell_index": None,
             })
 
+    if __debug__:
+        session.check_invariants()
+
     logger.info("Queried solution at %d points (tolerance=%.2e)", len(points), tolerance)
     return {
         "function_name": function_name or session.get_last_solution().name,
@@ -557,6 +572,9 @@ async def plot_solution(
             )
 
         file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+
+        if __debug__:
+            session.check_invariants()
 
         logger.info("Generated %s plot at %s (%d bytes)", plot_type, output_path, file_size)
         return {
