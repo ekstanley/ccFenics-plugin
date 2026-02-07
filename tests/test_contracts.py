@@ -754,6 +754,7 @@ class TestPhase8ErrorIntegrity:
             "dolfinx.fem": mock_fem,
             "dolfinx.fem.petsc": MagicMock(),
             "numpy": mock_np,
+            "ufl": MagicMock(),
         }), patch("dolfinx_mcp.ufl_context.build_namespace", return_value={}), \
             patch("dolfinx_mcp.ufl_context.safe_evaluate", return_value=MagicMock()):
             result = await assemble(target="scalar", form="u*v*dx", ctx=ctx)
@@ -807,6 +808,7 @@ class TestPhase9ExceptionGuards:
             "dolfinx": MagicMock(),
             "dolfinx.fem": MagicMock(),
             "dolfinx.fem.petsc": MagicMock(),
+            "ufl": MagicMock(),
         }), patch("dolfinx_mcp.ufl_context.build_namespace", return_value={}), \
             patch("dolfinx_mcp.ufl_context.safe_evaluate", side_effect=raise_invalid_ufl):
             result = await assemble(target="scalar", form="xyz", ctx=ctx)
@@ -832,6 +834,7 @@ class TestPhase9ExceptionGuards:
             "dolfinx": MagicMock(),
             "dolfinx.fem": mock_fem,
             "dolfinx.fem.petsc": MagicMock(),
+            "ufl": MagicMock(),
         }), patch("dolfinx_mcp.ufl_context.build_namespace", return_value={}), \
             patch("dolfinx_mcp.ufl_context.safe_evaluate", return_value=MagicMock()):
             result = await assemble(target="scalar", form="u*v*dx", ctx=ctx)
