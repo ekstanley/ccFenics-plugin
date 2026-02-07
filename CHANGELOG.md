@@ -6,6 +6,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.4] - 2026-02-06
+
+### Added
+
+#### Design-by-Contract Phase 20: Local Test Completion and Documentation
+- **12 new local contract tests** for 4 tools previously only tested via Docker:
+  - `get_session_state` (3): empty_session, populated, after_removal
+  - `reset_session` (3): clears_all, empty_session, returns_status
+  - `get_mesh_info` (3): missing_mesh, returns_expected_keys, uses_accessor
+  - `get_solver_diagnostics` (3): no_solution, returns_expected_keys, uses_accessor
+- **All 31 tools** now have at least 1 local contract test
+- **Naming footnotes** added to v0.1.0 for renamed/consolidated tools
+
+**Final v0.2.4 metrics:**
+- 31 tools, 30 PostconditionError raises, 35 `if __debug__:` sites
+- 121 correspondence table entries
+- 133 contract tests + 39 core tests = 172 local (170 passed, 2 skipped)
+- 23 Docker integration tests
+- 195 total tests
+- 100% DbC compliance (31/31 tools)
+
+---
+
 ## [0.2.3] - 2026-02-06
 
 ### Changed
@@ -442,9 +465,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Spaces** (2): `create_function_space`, `create_mixed_space`
 - **Problem** (3): `define_variational_form`, `apply_boundary_condition`, `set_material_properties`
 - **Solver** (3): `solve`, `solve_time_dependent`, `get_solver_diagnostics`
-- **Postprocessing** (5): `compute_error`, `export_solution`, `compute_derived_quantity`, `evaluate_solution`, `query_point_values`
+- **Postprocessing** (5): `compute_error`, `export_solution`, `compute_derived_quantity`[^1], `evaluate_solution`, `query_point_values`
 - **Interpolation** (2): `interpolate`, `project`
-- **Session** (6): `get_session_status`, `list_objects`, `remove_object`, `reset_session`, `assemble`, `compute_mesh_quality`
+- **Session** (6): `get_session_status`[^2], `list_objects`[^3], `remove_object`, `reset_session`, `assemble`, `compute_mesh_quality`
+
+[^1]: `compute_derived_quantity` was renamed to `compute_functionals` in Phase 14.
+[^2]: `get_session_status` was renamed to `get_session_state` in Phase 14.
+[^3]: `list_objects` was consolidated into `get_session_state` in Phase 14.
 
 #### Prompts (6)
 - `poisson_guide`, `linear_elasticity_guide`, `stokes_flow_guide`, `mesh_generation_guide`, `debugging_guide`, `time_dependent_guide`

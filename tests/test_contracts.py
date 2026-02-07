@@ -2187,3 +2187,251 @@ class TestPhase19Deduplication:
         assert opts["pc_type"] == "ilu"
         assert opts["ksp_rtol"] == 1e-8
         assert opts["ksp_monitor"] is True
+
+
+class TestPhase20LocalTestCompletion:
+    """Phase 20: Local tests for tools previously only tested via Docker."""
+
+    # -- get_session_state (3 tests) --
+
+    @pytest.mark.asyncio
+    async def test_get_session_state_empty_session(self):
+        """get_session_state returns expected keys on empty session."""
+        from dolfinx_mcp.tools.session_mgmt import get_session_state
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+
+        result = await get_session_state(ctx=ctx)
+
+        assert "active_mesh" in result
+        assert "meshes" in result
+        assert "function_spaces" in result
+        assert "functions" in result
+        assert "solutions" in result
+        assert result["active_mesh"] is None
+        assert result["meshes"] == {}
+
+    @pytest.mark.asyncio
+    async def test_get_session_state_populated(self):
+        """get_session_state returns all registered objects."""
+        from dolfinx_mcp.tools.session_mgmt import get_session_state
+
+        session = SessionState()
+        mesh_info = _make_mesh_info("m1")
+        session.meshes["m1"] = mesh_info
+        session.active_mesh = "m1"
+        space_info = _make_space_info("V", "m1")
+        session.function_spaces["V"] = space_info
+        ctx = _mock_ctx(session)
+
+        result = await get_session_state(ctx=ctx)
+
+        assert "m1" in result["meshes"]
+        assert "V" in result["function_spaces"]
+        assert result["active_mesh"] == "m1"
+
+    @pytest.mark.asyncio
+    async def test_get_session_state_after_removal(self):
+        """get_session_state reflects deletions."""
+        from dolfinx_mcp.tools.session_mgmt import get_session_state
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        ctx = _mock_ctx(session)
+
+        # Remove the mesh
+        session.remove_mesh("m1")
+
+        result = await get_session_state(ctx=ctx)
+
+        assert result["meshes"] == {}
+        assert result["active_mesh"] is None
+
+    # -- reset_session (3 tests) --
+
+    @pytest.mark.asyncio
+    async def test_reset_session_clears_all(self):
+        """reset_session empties all registries."""
+        from dolfinx_mcp.tools.session_mgmt import reset_session
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+        ctx = _mock_ctx(session)
+
+        await reset_session(ctx=ctx)
+
+        assert len(session.meshes) == 0
+        assert len(session.function_spaces) == 0
+        assert session.active_mesh is None
+
+    @pytest.mark.asyncio
+    async def test_reset_session_empty_session(self):
+        """reset_session does not error on empty session."""
+        from dolfinx_mcp.tools.session_mgmt import reset_session
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+
+        result = await reset_session(ctx=ctx)
+
+        assert result["status"] == "reset"
+
+    @pytest.mark.asyncio
+    async def test_reset_session_returns_status(self):
+        """reset_session returns expected status dict."""
+        from dolfinx_mcp.tools.session_mgmt import reset_session
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        ctx = _mock_ctx(session)
+
+        result = await reset_session(ctx=ctx)
+
+        assert result["status"] == "reset"
+        assert "message" in result
+
+    # -- get_mesh_info (3 tests) --
+
+    @pytest.mark.asyncio
+    async def test_get_mesh_info_missing_mesh(self):
+        """get_mesh_info errors when mesh not found."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import get_mesh_info
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+
+        # Mock numpy so the top-of-function import succeeds before accessor fires
+        mock_np = MagicMock()
+        with patch.dict(sys.modules, {"numpy": mock_np}):
+            result = await get_mesh_info(name="nonexistent", ctx=ctx)
+
+        assert result["error"] == "MESH_NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_get_mesh_info_returns_expected_keys(self):
+        """get_mesh_info returns summary with bounding box."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import get_mesh_info
+
+        session = SessionState()
+        mesh_info = _make_mesh_info("m1")
+
+        # Mock coords for bbox computation
+        mock_min_result = MagicMock()
+        mock_min_result.tolist.return_value = [0.0, 0.0, 0.0]
+        mock_max_result = MagicMock()
+        mock_max_result.tolist.return_value = [1.0, 1.0, 0.0]
+        mock_coords = MagicMock()
+        mock_coords.min.return_value = mock_min_result
+        mock_coords.max.return_value = mock_max_result
+        mesh_info.mesh.geometry.x = mock_coords
+
+        session.meshes["m1"] = mesh_info
+        session.active_mesh = "m1"
+        ctx = _mock_ctx(session)
+
+        # Mock numpy so isfinite passes
+        mock_np = MagicMock()
+        mock_finite_result = MagicMock()
+        mock_finite_result.all.return_value = True
+        mock_np.isfinite.return_value = mock_finite_result
+
+        with patch.dict(sys.modules, {"numpy": mock_np}):
+            result = await get_mesh_info(name="m1", ctx=ctx)
+
+        assert "bounding_box" in result
+        assert result["bounding_box"]["min"] == [0.0, 0.0, 0.0]
+        assert result["bounding_box"]["max"] == [1.0, 1.0, 0.0]
+        assert "active" in result
+        assert result["name"] == "m1"
+
+    @pytest.mark.asyncio
+    async def test_get_mesh_info_uses_accessor(self):
+        """get_mesh_info uses get_mesh() accessor."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import get_mesh_info
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+
+        # Mock numpy so the top-of-function import succeeds before accessor fires
+        mock_np = MagicMock()
+        with patch.dict(sys.modules, {"numpy": mock_np}):
+            # No active mesh set -> accessor should raise
+            result = await get_mesh_info(ctx=ctx)
+
+        assert result["error"] == "NO_ACTIVE_MESH"
+
+    # -- get_solver_diagnostics (3 tests) --
+
+    @pytest.mark.asyncio
+    async def test_get_solver_diagnostics_no_solution(self):
+        """get_solver_diagnostics errors when no solutions exist."""
+        from dolfinx_mcp.tools.solver import get_solver_diagnostics
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+
+        result = await get_solver_diagnostics(ctx=ctx)
+
+        # get_last_solution() raises DOLFINxAPIError -> error_code = "DOLFINX_API_ERROR"
+        assert result["error"] == "DOLFINX_API_ERROR"
+
+    @pytest.mark.asyncio
+    async def test_get_solver_diagnostics_returns_expected_keys(self):
+        """get_solver_diagnostics returns expected structure."""
+        import sys
+
+        from dolfinx_mcp.tools.solver import get_solver_diagnostics
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+
+        mock_func = MagicMock()
+        mock_func.function_space.dofmap.index_map.size_global = 64
+        mock_func.function_space.dofmap.index_map_bs = 1
+
+        sol_info = SolutionInfo(
+            name="u_h",
+            function=mock_func,
+            space_name="V",
+            converged=True,
+            iterations=5,
+            residual_norm=1e-10,
+            wall_time=0.5,
+        )
+        session.solutions["u_h"] = sol_info
+        ctx = _mock_ctx(session)
+
+        # Mock compute_l2_norm at its source module (lazy-imported inside function body)
+        with patch("dolfinx_mcp.utils.compute_l2_norm", return_value=1.234):
+            result = await get_solver_diagnostics(ctx=ctx)
+
+        assert result["solution_name"] == "u_h"
+        assert result["converged"] is True
+        assert result["iterations"] == 5
+        assert "solution_norm_L2" in result
+        assert "num_dofs" in result
+
+    @pytest.mark.asyncio
+    async def test_get_solver_diagnostics_uses_accessor(self):
+        """get_solver_diagnostics uses get_last_solution() accessor."""
+        from dolfinx_mcp.tools.solver import get_solver_diagnostics
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+
+        # No solutions -> accessor raises
+        result = await get_solver_diagnostics(ctx=ctx)
+
+        assert "error" in result
