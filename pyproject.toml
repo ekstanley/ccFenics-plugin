@@ -4,13 +4,20 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dolfinx-mcp"
-version = "0.2.8"
+version = "0.2.9"
 description = "MCP server for FEniCSx/DOLFINx finite element computing"
 requires-python = ">=3.10"
 license = "MIT"
 dependencies = [
     "mcp[cli]>=1.2.0",
     "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.4",
 ]
 
 [project.scripts]

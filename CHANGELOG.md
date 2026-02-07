@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.9] - 2026-02-06
+
+### Added
+
+#### Design-by-Contract Phase 25: CI/CD Pipeline
+- **GitHub Actions CI workflow** (`.github/workflows/ci.yml`) enforcing ruff lint
+  and pytest on every push to main and on pull requests
+- **`[project.optional-dependencies] dev`** section in pyproject.toml: pytest,
+  pytest-asyncio, ruff pinned as dev dependencies
+- CI runs two parallel jobs: `lint` (ruff check) and `test` (pytest, ignoring
+  Docker-only integration tests)
+
+**v0.2.9 metrics:**
+- CI/CD: lint + test on push/PR (was: none)
+- Ruff errors: 0
+- 174 local tests, 23 Docker tests, 197 total
+
+---
+
 ## [0.2.8] - 2026-02-06
 
 ### Changed
