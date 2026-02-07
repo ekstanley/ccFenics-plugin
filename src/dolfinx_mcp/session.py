@@ -585,6 +585,15 @@ class SessionState:
                 f"_remove_space_dependents(): dangling references to deleted space '{space_name}'"
             )
 
+    # --- Utilities ---
+
+    def find_space_name(self, space_object) -> str:
+        """Find the registry name for a function space object, or 'unknown'."""
+        for sname, sinfo in self.function_spaces.items():
+            if sinfo.space is space_object:
+                return sname
+        return "unknown"
+
     # --- Overview ---
 
     def overview(self) -> dict[str, Any]:

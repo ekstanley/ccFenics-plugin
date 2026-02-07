@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.3] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 19: Code Deduplication
+- **`src/dolfinx_mcp/utils.py`**: New shared utility with `compute_l2_norm()`
+  replacing 3 duplicated import+compute blocks in solver.py
+- **`session.find_space_name()`**: New utility replacing 2 duplicated 7-line
+  loops in solver.py
+- **`solve()` PETSc opts**: Consolidated inline opts building to use existing
+  `_build_petsc_opts()` function
+- **5 new tests** for extracted utilities
+- No behavioral changes: pure refactoring
+
+---
+
 ## [0.2.2] - 2026-02-06
 
 ### Added

@@ -2135,3 +2135,55 @@ class TestPhase17Postconditions:
 
         assert result["error"] == "POSTCONDITION_VIOLATED"
         assert "not created" in result["message"]
+
+
+class TestPhase19Deduplication:
+    """Phase 19: Tests for extracted utilities."""
+
+    def test_find_space_name_found(self):
+        """find_space_name returns correct name when space object matches."""
+        session = SessionState()
+        space_info = _make_space_info("V", "m1")
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.function_spaces["V"] = space_info
+
+        result = session.find_space_name(space_info.space)
+        assert result == "V"
+
+    def test_find_space_name_not_found(self):
+        """find_space_name returns 'unknown' when no match."""
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+
+        result = session.find_space_name(MagicMock())
+        assert result == "unknown"
+
+    def test_find_space_name_empty_session(self):
+        """find_space_name returns 'unknown' on empty session."""
+        session = SessionState()
+        result = session.find_space_name(MagicMock())
+        assert result == "unknown"
+
+    def test_build_petsc_opts_direct(self):
+        """_build_petsc_opts returns correct direct solver options."""
+        from dolfinx_mcp.tools.solver import _build_petsc_opts
+
+        opts = _build_petsc_opts("direct", None, None)
+        assert opts["ksp_type"] == "preonly"
+        assert opts["pc_type"] == "lu"
+        assert "ksp_rtol" not in opts
+
+    def test_build_petsc_opts_iterative(self):
+        """_build_petsc_opts returns correct iterative solver options."""
+        from dolfinx_mcp.tools.solver import _build_petsc_opts
+
+        opts = _build_petsc_opts(
+            "iterative", "gmres", "ilu",
+            petsc_options={"ksp_monitor": True},
+            rtol=1e-8,
+        )
+        assert opts["ksp_type"] == "gmres"
+        assert opts["pc_type"] == "ilu"
+        assert opts["ksp_rtol"] == 1e-8
+        assert opts["ksp_monitor"] is True

@@ -68,19 +68,7 @@ async def solve(
     bcs = [bc_info.bc for bc_info in session.bcs.values()]
 
     # Build PETSc options
-    opts: dict[str, Any] = {}
-    if solver_type == "direct":
-        opts["ksp_type"] = ksp_type or "preonly"
-        opts["pc_type"] = pc_type or "lu"
-    elif solver_type == "iterative":
-        opts["ksp_type"] = ksp_type or "cg"
-        opts["pc_type"] = pc_type or "hypre"
-        opts["ksp_rtol"] = rtol
-        opts["ksp_atol"] = atol
-        opts["ksp_max_it"] = max_iter
-
-    if petsc_options:
-        opts.update(petsc_options)
+    opts = _build_petsc_opts(solver_type, ksp_type, pc_type, petsc_options, rtol, atol, max_iter)
 
     # Solve
     t0 = time.perf_counter()
@@ -116,25 +104,15 @@ async def solve(
     converged = converged_reason > 0
 
     # Compute L2 norm of solution
-    from dolfinx.fem import assemble_scalar, form as compile_form
-    import ufl
-
-    V = uh.function_space
-    l2_norm_form = compile_form(ufl.inner(uh, uh) * ufl.dx)
-    l2_norm = float(np.sqrt(abs(assemble_scalar(l2_norm_form))))
+    from ..utils import compute_l2_norm
+    l2_norm = compute_l2_norm(uh)
 
     # Postcondition: L2 norm must be non-negative
     if l2_norm < 0:
         raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
 
     # Identify space name
-    space_name = None
-    for sname, sinfo in session.function_spaces.items():
-        if sinfo.space is V:
-            space_name = sname
-            break
-    if space_name is None:
-        space_name = "unknown"
+    space_name = session.find_space_name(uh.function_space)
 
     # Store solution
     sol_info = SolutionInfo(
@@ -328,21 +306,11 @@ async def solve_time_dependent(
     wall_time_total = time.perf_counter() - t0_total
 
     # Store final solution
-    from dolfinx.fem import assemble_scalar, form as compile_form
-    import ufl
-
-    V = uh.function_space
-    l2_norm_form = compile_form(ufl.inner(uh, uh) * ufl.dx)
-    l2_norm = float(np.sqrt(abs(assemble_scalar(l2_norm_form))))
+    from ..utils import compute_l2_norm
+    l2_norm = compute_l2_norm(uh)
 
     # Identify space name
-    space_name = None
-    for sname, sinfo in session.function_spaces.items():
-        if sinfo.space is V:
-            space_name = sname
-            break
-    if space_name is None:
-        space_name = "unknown"
+    space_name = session.find_space_name(uh.function_space)
 
     sol_info = SolutionInfo(
         name=solution_name,
@@ -395,9 +363,7 @@ async def get_solver_diagnostics(
     Returns:
         Dictionary with solver diagnostics and solution information
     """
-    import numpy as np
-    from dolfinx.fem import assemble_scalar, form as compile_form
-    import ufl
+    from ..utils import compute_l2_norm
 
     session = _get_session(ctx)
 
@@ -409,8 +375,7 @@ async def get_solver_diagnostics(
     num_dofs = V.dofmap.index_map.size_global * V.dofmap.index_map_bs
 
     # Compute L2 norm
-    l2_norm_form = compile_form(ufl.inner(sol_info.function, sol_info.function) * ufl.dx)
-    l2_norm = float(np.sqrt(abs(assemble_scalar(l2_norm_form))))
+    l2_norm = compute_l2_norm(sol_info.function)
 
     # Postcondition: L2 norm must be non-negative
     if l2_norm < 0:
