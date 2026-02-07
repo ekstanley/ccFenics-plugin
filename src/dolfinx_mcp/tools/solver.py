@@ -9,7 +9,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, PostconditionError, PreconditionError, SolverError, handle_tool_errors
+from ..errors import DOLFINxAPIError, DOLFINxMCPError, PostconditionError, PreconditionError, SolverError, handle_tool_errors
 from ..session import SessionState, SolutionInfo
 
 logger = logging.getLogger(__name__)
@@ -60,20 +60,9 @@ async def solve(
 
     session = _get_session(ctx)
 
-    # Validate forms exist
-    if "bilinear" not in session.forms:
-        raise DOLFINxAPIError(
-            "No bilinear form defined.",
-            suggestion="Use define_variational_form first.",
-        )
-    if "linear" not in session.forms:
-        raise DOLFINxAPIError(
-            "No linear form defined.",
-            suggestion="Use define_variational_form first.",
-        )
-
-    a_form = session.forms["bilinear"].ufl_form
-    L_form = session.forms["linear"].ufl_form
+    # Retrieve forms via accessor (postcondition-checked)
+    a_form = session.get_form("bilinear", suggestion="Use define_variational_form first.").ufl_form
+    L_form = session.get_form("linear", suggestion="Use define_variational_form first.").ufl_form
 
     # Collect boundary conditions
     bcs = [bc_info.bc for bc_info in session.bcs.values()]
@@ -101,6 +90,8 @@ async def solve(
             petsc_options=opts, petsc_options_prefix="solve",
         )
         uh = problem.solve()
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise SolverError(
             f"Solver failed: {exc}",
@@ -281,20 +272,9 @@ async def solve_time_dependent(
 
     session = _get_session(ctx)
 
-    # Validate forms exist
-    if "bilinear" not in session.forms:
-        raise DOLFINxAPIError(
-            "No bilinear form defined.",
-            suggestion="Use define_variational_form first.",
-        )
-    if "linear" not in session.forms:
-        raise DOLFINxAPIError(
-            "No linear form defined.",
-            suggestion="Use define_variational_form first.",
-        )
-
-    a_form = session.forms["bilinear"].ufl_form
-    L_form = session.forms["linear"].ufl_form
+    # Retrieve forms via accessor (postcondition-checked)
+    a_form = session.get_form("bilinear", suggestion="Use define_variational_form first.").ufl_form
+    L_form = session.get_form("linear", suggestion="Use define_variational_form first.").ufl_form
     bcs = [bc_info.bc for bc_info in session.bcs.values()]
 
     # Build solver options
@@ -321,6 +301,8 @@ async def solve_time_dependent(
                 petsc_options=opts, petsc_options_prefix="ts",
             )
             uh = problem.solve()
+        except DOLFINxMCPError:
+            raise
         except Exception as exc:
             raise SolverError(
                 f"Time step {step} at t={t:.3e} failed: {exc}",
@@ -427,7 +409,7 @@ async def get_solver_diagnostics(
 
     # Get the last solution
     last_solution_name = list(session.solutions.keys())[-1]
-    sol_info = session.solutions[last_solution_name]
+    sol_info = session.get_solution(last_solution_name)
 
     # Compute number of DOFs
     V = sol_info.function.function_space

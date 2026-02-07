@@ -14,7 +14,7 @@ import math
 import re
 from typing import TYPE_CHECKING, Any
 
-from .errors import InvalidUFLExpressionError
+from .errors import InvalidUFLExpressionError, PostconditionError
 
 if TYPE_CHECKING:
     from .session import SessionState
@@ -162,6 +162,13 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
     for fname, finfo in session.functions.items():
         ns[fname] = finfo.function
 
+    if __debug__:
+        _required = {"dx", "ds", "inner", "grad", "x"}
+        missing = _required - ns.keys()
+        if missing:
+            raise PostconditionError(
+                f"build_namespace(): missing required keys {missing}"
+            )
     return ns
 
 
@@ -209,4 +216,9 @@ def safe_evaluate(expr_str: str, namespace: dict[str, Any]) -> Any:
             f"Failed to evaluate expression '{expr_str}': {exc}",
         ) from exc
 
+    if result is None:
+        raise InvalidUFLExpressionError(
+            f"Expression '{expr_str}' evaluated to None",
+            suggestion="Ensure the expression produces a value, not a statement.",
+        )
     return result

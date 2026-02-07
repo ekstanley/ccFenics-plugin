@@ -16,6 +16,7 @@ from mcp.server.fastmcp import Context
 from .._app import mcp
 from ..errors import (
     DOLFINxAPIError,
+    DOLFINxMCPError,
     DuplicateNameError,
     InvalidUFLExpressionError,
     PreconditionError,
@@ -176,6 +177,8 @@ async def define_variational_form(
     # Compile forms
     try:
         a_compiled = dolfinx.fem.form(a_ufl)
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(
             f"Failed to compile bilinear form: {exc}",
@@ -184,6 +187,8 @@ async def define_variational_form(
 
     try:
         L_compiled = dolfinx.fem.form(L_ufl)
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(
             f"Failed to compile linear form: {exc}",
@@ -281,6 +286,8 @@ async def apply_boundary_condition(
                 lambda x: _eval_bc_expression(value, x, ns)
             )
             bc_value = bc_func
+        except DOLFINxMCPError:
+            raise
         except Exception as exc:
             raise DOLFINxAPIError(
                 f"Failed to interpolate BC value expression: {exc}",
@@ -300,6 +307,8 @@ async def apply_boundary_condition(
                 fdim,
                 boundary_facets,
             )
+        except DOLFINxMCPError:
+            raise
         except Exception as exc:
             raise DOLFINxAPIError(
                 f"Failed to locate boundary DOFs: {exc}",
@@ -407,6 +416,8 @@ async def set_material_properties(
         func.interpolate(
             lambda x: _eval_material_expression(value, x, mesh_info.mesh)
         )
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(
             f"Failed to interpolate material expression '{value}': {exc}",

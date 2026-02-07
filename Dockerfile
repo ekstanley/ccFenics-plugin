@@ -7,7 +7,8 @@ RUN pip install --no-cache-dir \
     "mcp[cli]>=1.2.0" \
     "pydantic>=2.0" \
     pyvista \
-    matplotlib
+    matplotlib \
+    pytest-asyncio
 
 # Copy source
 COPY pyproject.toml .

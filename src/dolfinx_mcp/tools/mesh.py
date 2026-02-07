@@ -8,7 +8,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DuplicateNameError, DOLFINxAPIError, PreconditionError, handle_tool_errors
+from ..errors import DOLFINxAPIError, DOLFINxMCPError, DuplicateNameError, PostconditionError, PreconditionError, handle_tool_errors
 from ..session import EntityMapInfo, MeshInfo, MeshTagsInfo, SessionState
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,8 @@ async def create_unit_square(
         mesh = dolfinx.mesh.create_unit_square(
             MPI.COMM_WORLD, nx, ny, cell_types[cell_type]
         )
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to create mesh: {exc}") from exc
 
@@ -261,7 +263,7 @@ async def create_mesh(
                 MPI.COMM_WORLD, [[0, 0, 0], [x_dim, y_dim, z_dim]], [nx, ny, nz], cell_types[cell_type]
             )
 
-    except DOLFINxAPIError:
+    except DOLFINxMCPError:
         raise
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to create mesh: {exc}") from exc
@@ -387,7 +389,7 @@ async def mark_boundaries(
         # Create MeshTags
         meshtags = dolfinx.mesh.meshtags(mesh, fdim, facet_indices, tag_values)
 
-    except DOLFINxAPIError:
+    except DOLFINxMCPError:
         raise
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to create boundary markers: {exc}") from exc
@@ -448,6 +450,8 @@ async def refine_mesh(
 
     try:
         refined_mesh = dolfinx.mesh.refine(mesh_info.mesh)
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to refine mesh: {exc}") from exc
 
@@ -473,6 +477,13 @@ async def refine_mesh(
     result["original_cells"] = mesh_info.num_cells
     result["original_vertices"] = mesh_info.num_vertices
     result["refinement_factor"] = refined_info.num_cells / mesh_info.num_cells
+
+    # Postcondition: uniform refinement must increase cell count
+    if refined_info.num_cells <= mesh_info.num_cells:
+        raise PostconditionError(
+            f"refine_mesh(): refined mesh has {refined_info.num_cells} cells, "
+            f"expected more than original {mesh_info.num_cells}"
+        )
 
     if __debug__:
         session.check_invariants()
@@ -536,6 +547,8 @@ async def create_custom_mesh(
         cell_tags = mesh_data.cell_tags
         facet_tags = mesh_data.facet_tags
 
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to import mesh from '{filename}': {exc}") from exc
 
@@ -666,7 +679,7 @@ async def create_submesh(
             mesh, tags_info.dimension, entities
         )
 
-    except DOLFINxAPIError:
+    except DOLFINxMCPError:
         raise
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to create submesh: {exc}") from exc
@@ -793,7 +806,7 @@ async def manage_mesh_tags(
 
             meshtags = dolfinx.mesh.meshtags(mesh, dimension, entity_indices, tag_values)
 
-        except DOLFINxAPIError:
+        except DOLFINxMCPError:
             raise
         except Exception as exc:
             raise DOLFINxAPIError(f"Failed to create mesh tags: {exc}") from exc

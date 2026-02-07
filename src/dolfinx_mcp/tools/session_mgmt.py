@@ -8,7 +8,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, PreconditionError, handle_tool_errors
+from ..errors import DOLFINxAPIError, DOLFINxMCPError, PreconditionError, handle_tool_errors
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -128,6 +128,9 @@ async def run_custom_code(
     except Exception as e:
         error_text = f"{type(e).__name__}: {e}"
 
+    if __debug__:
+        session.check_invariants()
+
     return {"output": output_text, "error": error_text}
 
 
@@ -173,8 +176,13 @@ async def assemble(
     # Evaluate form expression
     try:
         ufl_form = safe_evaluate(form, ufl_namespace)
+    except DOLFINxMCPError:
+        raise
     except Exception as e:
-        return {"error": f"Form evaluation failed: {e}"}
+        raise DOLFINxAPIError(
+            f"Form evaluation failed: {e}",
+            suggestion="Check UFL expression syntax and available symbols.",
+        ) from e
 
     # Assemble based on target type
     try:
@@ -224,5 +232,10 @@ async def assemble(
 
             return {"dims": list(dims), "nnz": int(nnz)}
 
+    except DOLFINxMCPError:
+        raise
     except Exception as e:
-        return {"error": f"Assembly failed: {e}"}
+        raise DOLFINxAPIError(
+            f"Assembly failed: {e}",
+            suggestion="Check form expression and boundary conditions.",
+        ) from e

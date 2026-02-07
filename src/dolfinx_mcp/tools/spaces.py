@@ -8,7 +8,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DuplicateNameError, DOLFINxAPIError, PreconditionError, handle_tool_errors
+from ..errors import DOLFINxAPIError, DOLFINxMCPError, DuplicateNameError, PreconditionError, handle_tool_errors
 from ..session import FunctionSpaceInfo, SessionState
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,8 @@ async def create_function_space(
             V = dolfinx.fem.functionspace(mesh, (family, degree, tuple(shape)))
         else:
             V = dolfinx.fem.functionspace(mesh, (family, degree))
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(
             f"Failed to create function space: {exc}",
@@ -148,6 +150,8 @@ async def create_mixed_space(
         elements = [space_info.space.ufl_element() for space_info in subspace_infos]
         mixed_el = basix.ufl.mixed_element(elements)
         W = dolfinx.fem.functionspace(mesh, mixed_el)
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(
             f"Failed to create mixed function space: {exc}",

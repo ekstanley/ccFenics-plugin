@@ -12,8 +12,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .errors import (
+    DOLFINxAPIError,
     FunctionNotFoundError,
     FunctionSpaceNotFoundError,
+    InvariantError,
     MeshNotFoundError,
     NoActiveMeshError,
     PostconditionError,
@@ -38,12 +40,18 @@ class MeshInfo:
     tdim: int
 
     def __post_init__(self) -> None:
-        assert self.name, "MeshInfo.name must be non-empty"
-        assert self.num_cells > 0, f"num_cells must be > 0, got {self.num_cells}"
-        assert self.num_vertices > 0, f"num_vertices must be > 0, got {self.num_vertices}"
-        assert self.gdim in (1, 2, 3), f"gdim must be 1, 2, or 3, got {self.gdim}"
-        assert self.tdim in (1, 2, 3), f"tdim must be 1, 2, or 3, got {self.tdim}"
-        assert self.tdim <= self.gdim, f"tdim ({self.tdim}) must be <= gdim ({self.gdim})"
+        if not self.name:
+            raise InvariantError("MeshInfo.name must be non-empty")
+        if self.num_cells <= 0:
+            raise InvariantError(f"num_cells must be > 0, got {self.num_cells}")
+        if self.num_vertices <= 0:
+            raise InvariantError(f"num_vertices must be > 0, got {self.num_vertices}")
+        if self.gdim not in (1, 2, 3):
+            raise InvariantError(f"gdim must be 1, 2, or 3, got {self.gdim}")
+        if self.tdim not in (1, 2, 3):
+            raise InvariantError(f"tdim must be 1, 2, or 3, got {self.tdim}")
+        if self.tdim > self.gdim:
+            raise InvariantError(f"tdim ({self.tdim}) must be <= gdim ({self.gdim})")
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -67,13 +75,19 @@ class FunctionSpaceInfo:
     shape: tuple[int, ...] | None = None
 
     def __post_init__(self) -> None:
-        assert self.name, "FunctionSpaceInfo.name must be non-empty"
-        assert self.mesh_name, "mesh_name must be non-empty"
-        assert self.element_degree >= 0, f"degree must be >= 0, got {self.element_degree}"
-        assert self.num_dofs > 0, f"num_dofs must be > 0, got {self.num_dofs}"
+        if not self.name:
+            raise InvariantError("FunctionSpaceInfo.name must be non-empty")
+        if not self.mesh_name:
+            raise InvariantError("mesh_name must be non-empty")
+        if self.element_degree < 0:
+            raise InvariantError(f"degree must be >= 0, got {self.element_degree}")
+        if self.num_dofs <= 0:
+            raise InvariantError(f"num_dofs must be > 0, got {self.num_dofs}")
         if self.shape is not None:
-            assert len(self.shape) > 0, "shape must be non-empty if provided"
-            assert all(d > 0 for d in self.shape), f"shape dims must be > 0: {self.shape}"
+            if not self.shape:
+                raise InvariantError("shape must be non-empty if provided")
+            if not all(d > 0 for d in self.shape):
+                raise InvariantError(f"shape dims must be > 0: {self.shape}")
 
     def summary(self) -> dict[str, Any]:
         result = {
@@ -96,8 +110,10 @@ class FunctionInfo:
     description: str = ""
 
     def __post_init__(self) -> None:
-        assert self.name, "FunctionInfo.name must be non-empty"
-        assert self.space_name, "space_name must be non-empty"
+        if not self.name:
+            raise InvariantError("FunctionInfo.name must be non-empty")
+        if not self.space_name:
+            raise InvariantError("space_name must be non-empty")
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -116,9 +132,12 @@ class BCInfo:
     description: str = ""
 
     def __post_init__(self) -> None:
-        assert self.name, "BCInfo.name must be non-empty"
-        assert self.space_name, "space_name must be non-empty"
-        assert self.num_dofs > 0, f"num_dofs must be > 0, got {self.num_dofs}"
+        if not self.name:
+            raise InvariantError("BCInfo.name must be non-empty")
+        if not self.space_name:
+            raise InvariantError("space_name must be non-empty")
+        if self.num_dofs <= 0:
+            raise InvariantError(f"num_dofs must be > 0, got {self.num_dofs}")
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -137,9 +156,12 @@ class FormInfo:
     description: str = ""
 
     def __post_init__(self) -> None:
-        assert self.name, "FormInfo.name must be non-empty"
-        assert self.form is not None, "form (compiled) must not be None"
-        assert self.ufl_form is not None, "ufl_form (symbolic) must not be None"
+        if not self.name:
+            raise InvariantError("FormInfo.name must be non-empty")
+        if self.form is None:
+            raise InvariantError("form (compiled) must not be None")
+        if self.ufl_form is None:
+            raise InvariantError("ufl_form (symbolic) must not be None")
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -159,11 +181,16 @@ class SolutionInfo:
     wall_time: float
 
     def __post_init__(self) -> None:
-        assert self.name, "SolutionInfo.name must be non-empty"
-        assert self.space_name, "space_name must be non-empty"
-        assert self.iterations >= 0, f"iterations must be >= 0, got {self.iterations}"
-        assert self.residual_norm >= 0.0, f"residual_norm must be >= 0, got {self.residual_norm}"
-        assert self.wall_time >= 0.0, f"wall_time must be >= 0, got {self.wall_time}"
+        if not self.name:
+            raise InvariantError("SolutionInfo.name must be non-empty")
+        if not self.space_name:
+            raise InvariantError("space_name must be non-empty")
+        if self.iterations < 0:
+            raise InvariantError(f"iterations must be >= 0, got {self.iterations}")
+        if self.residual_norm < 0.0:
+            raise InvariantError(f"residual_norm must be >= 0, got {self.residual_norm}")
+        if self.wall_time < 0.0:
+            raise InvariantError(f"wall_time must be >= 0, got {self.wall_time}")
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -185,9 +212,12 @@ class MeshTagsInfo:
     unique_tags: list[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        assert self.name, "MeshTagsInfo.name must be non-empty"
-        assert self.mesh_name, "mesh_name must be non-empty"
-        assert self.dimension >= 0, f"dimension must be >= 0, got {self.dimension}"
+        if not self.name:
+            raise InvariantError("MeshTagsInfo.name must be non-empty")
+        if not self.mesh_name:
+            raise InvariantError("mesh_name must be non-empty")
+        if self.dimension < 0:
+            raise InvariantError(f"dimension must be >= 0, got {self.dimension}")
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -207,10 +237,14 @@ class EntityMapInfo:
     dimension: int
 
     def __post_init__(self) -> None:
-        assert self.name, "EntityMapInfo.name must be non-empty"
-        assert self.parent_mesh, "parent_mesh must be non-empty"
-        assert self.child_mesh, "child_mesh must be non-empty"
-        assert self.dimension >= 0, f"dimension must be >= 0, got {self.dimension}"
+        if not self.name:
+            raise InvariantError("EntityMapInfo.name must be non-empty")
+        if not self.parent_mesh:
+            raise InvariantError("parent_mesh must be non-empty")
+        if not self.child_mesh:
+            raise InvariantError("child_mesh must be non-empty")
+        if self.dimension < 0:
+            raise InvariantError(f"dimension must be >= 0, got {self.dimension}")
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -320,7 +354,13 @@ class SessionState:
             raise MeshNotFoundError(
                 f"Mesh '{name}' not found. Available: {available}"
             )
-        return self.meshes[name]
+        result = self.meshes[name]
+        if __debug__:
+            if result.name != name:
+                raise PostconditionError(
+                    f"get_mesh(): MeshInfo.name '{result.name}' != registry key '{name}'"
+                )
+        return result
 
     def get_space(self, name: str) -> FunctionSpaceInfo:
         if name not in self.function_spaces:
@@ -328,7 +368,17 @@ class SessionState:
             raise FunctionSpaceNotFoundError(
                 f"Function space '{name}' not found. Available: {available}"
             )
-        return self.function_spaces[name]
+        result = self.function_spaces[name]
+        if __debug__:
+            if result.name != name:
+                raise PostconditionError(
+                    f"get_space(): FunctionSpaceInfo.name '{result.name}' != registry key '{name}'"
+                )
+            if result.mesh_name not in self.meshes:
+                raise PostconditionError(
+                    f"get_space(): mesh '{result.mesh_name}' not in meshes registry"
+                )
+        return result
 
     def get_function(self, name: str) -> FunctionInfo:
         if name not in self.functions:
@@ -336,18 +386,67 @@ class SessionState:
             raise FunctionNotFoundError(
                 f"Function '{name}' not found. Available: {available}"
             )
-        return self.functions[name]
+        result = self.functions[name]
+        if __debug__:
+            if result.name != name:
+                raise PostconditionError(
+                    f"get_function(): FunctionInfo.name '{result.name}' != registry key '{name}'"
+                )
+            if result.space_name not in self.function_spaces:
+                raise PostconditionError(
+                    f"get_function(): space '{result.space_name}' not in function_spaces registry"
+                )
+        return result
 
     def get_only_space(self) -> FunctionSpaceInfo:
         """Return the sole function space, or raise if zero or multiple exist."""
         if len(self.function_spaces) == 0:
             raise FunctionSpaceNotFoundError("No function spaces defined.")
         if len(self.function_spaces) == 1:
-            return next(iter(self.function_spaces.values()))
+            result = next(iter(self.function_spaces.values()))
+            if __debug__:
+                if result.mesh_name not in self.meshes:
+                    raise PostconditionError(
+                        f"get_only_space(): mesh '{result.mesh_name}' not in meshes registry"
+                    )
+            return result
         raise FunctionSpaceNotFoundError(
             f"Multiple function spaces exist ({list(self.function_spaces.keys())}). "
             "Specify which one to use."
         )
+
+    def get_solution(self, name: str) -> SolutionInfo:
+        """Return named solution, or raise if not found."""
+        if name not in self.solutions:
+            raise FunctionNotFoundError(
+                f"Solution '{name}' not found. Available: {list(self.solutions.keys())}"
+            )
+        result = self.solutions[name]
+        if __debug__:
+            if result.name != name:
+                raise PostconditionError(
+                    f"get_solution(): SolutionInfo.name '{result.name}' != registry key '{name}'"
+                )
+            if result.space_name not in self.function_spaces:
+                raise PostconditionError(
+                    f"get_solution(): space '{result.space_name}' not in function_spaces registry"
+                )
+        return result
+
+    def get_form(self, name: str, suggestion: str = "") -> FormInfo:
+        """Return named form, or raise if not found."""
+        if name not in self.forms:
+            raise DOLFINxAPIError(
+                f"No {name} form defined. Available: {list(self.forms.keys())}",
+                suggestion=suggestion or "Use define_variational_form first.",
+            )
+        result = self.forms[name]
+        if __debug__:
+            if result.name != name:
+                raise PostconditionError(
+                    f"get_form(): FormInfo.name '{result.name}' != registry key '{name}'"
+                )
+        return result
 
     # --- Cascade deletion ---
 

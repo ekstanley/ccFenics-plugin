@@ -124,6 +124,7 @@ class TestSpaceAccessors:
             session.get_only_space()
 
     def test_get_only_space_one(self, session: SessionState):
+        session.meshes["m1"] = _make_mesh_info("m1")
         s = _make_space_info("V", "m1")
         session.function_spaces["V"] = s
         assert session.get_only_space() is s

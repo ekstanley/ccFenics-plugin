@@ -6,6 +6,111 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.10] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 11: Registry Accessor Completion and Refinement Postcondition
+- **Registry accessors (2 methods in session.py)**: `get_solution` and `get_form` complete the
+  accessor family. `get_solution` verifies name matches key and `space_name` references an
+  existing function space (debug-only). `get_form` verifies name matches key (debug-only) and
+  accepts optional `suggestion` parameter for context-specific error messages
+- **Solver form retrieval (3 call sites in solver.py)**: `solve()` and `solve_time_dependent()`
+  replaced 24 lines of manual form existence checks with `session.get_form()` calls.
+  `get_solver_diagnostics()` replaced direct dict access with `session.get_solution()`
+- **Refine mesh postcondition (mesh.py)**: Unconditional check that refined mesh has more cells
+  than original -- uniform refinement must always increase cell count
+- **Import additions**: `DOLFINxAPIError` added to `session.py`, `PostconditionError` added to
+  `mesh.py`
+
+### Testing
+- 10 new contract tests (78 contract tests total, 117 local + 13 Docker = 130 total)
+- Phase 11: solution name mismatch (1), solution dangling space (1), solution not found (1),
+  solution valid access (1), form name mismatch (1), form not found (1), form valid access (1),
+  form custom suggestion (1), refine mesh cell count unit (1), refine mesh integration (1)
+
+---
+
+## [0.1.9] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 10: Accessor Postconditions and Finiteness Guards
+- **Accessor postconditions (4 methods in session.py)**: `get_mesh`, `get_space`, `get_function`,
+  `get_only_space` now verify registry consistency under `if __debug__:` -- name matches key,
+  referenced meshes/spaces exist. Zero cost in production with `python -O`
+- **Finiteness postconditions (2 tools in postprocess.py)**: `evaluate_solution` and
+  `query_point_values` unconditionally check `np.isfinite()` on `uh.eval()` results.
+  Non-finite values always indicate a real bug
+- **UFL context postconditions (2 functions in ufl_context.py)**: `safe_evaluate` rejects
+  None results with `InvalidUFLExpressionError`; `build_namespace` verifies required UFL
+  operators (`dx`, `ds`, `inner`, `grad`, `x`) are present under `if __debug__:`
+- **Import addition**: `PostconditionError` added to `ufl_context.py` imports
+
+### Testing
+- 9 new contract tests (68 contract tests total, 107 local + 13 Docker = 120 total)
+- Phase 10: accessor name mismatch (3), dangling mesh/space references (3),
+  finiteness NaN postcondition (2), safe_evaluate None rejection (1)
+
+---
+
+## [0.1.8] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 9: Defensive Exception Guard Sweep
+- **Exception guard sweep (25 blocks across 7 files)**: Every `except Exception` block in
+  tool files now has a preceding `except DOLFINxMCPError: raise` guard, ensuring all
+  contract errors (`PreconditionError`, `PostconditionError`, `InvariantError`,
+  `InvalidUFLExpressionError`) propagate correctly to `@handle_tool_errors` and produce
+  structured error responses
+- **Plain dict return elimination (2 blocks)**: `assemble()` form evaluation and assembly
+  failure paths now raise `DOLFINxAPIError` instead of returning plain `{"error": "..."}` dicts.
+  All error responses now include `error_code`, `message`, and `suggestion` fields
+- **Narrow guard broadening (4 blocks in mesh.py)**: Changed `except DOLFINxAPIError: raise`
+  to `except DOLFINxMCPError: raise` in `create_mesh`, `mark_boundaries`, `create_submesh`,
+  `manage_mesh_tags` -- prevents `PreconditionError`/`PostconditionError`/`InvariantError`
+  from being silently swallowed
+- **Import additions (5 files)**: Added `DOLFINxMCPError` to import lines in `mesh.py`,
+  `solver.py`, `problem.py`, `interpolation.py`, `spaces.py`
+
+### Excluded
+- `run_custom_code` L128 exception handler intentionally left unguarded (user code capture)
+
+### Testing
+- 3 new contract tests (59 contract tests total, 98 local + 13 Docker = 111 total)
+- Phase 9: InvalidUFLExpressionError propagation through assemble (1), assembly structured
+  error (1), PreconditionError propagation through create_unit_square (1)
+
+---
+
+## [0.1.7] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 8: Assert Hardening and Error Integrity
+- **Assert-to-InvariantError conversion (32)**: All `assert` statements in 8 session dataclasses
+  (`MeshInfo`, `FunctionSpaceInfo`, `FunctionInfo`, `BCInfo`, `FormInfo`, `SolutionInfo`,
+  `MeshTagsInfo`, `EntityMapInfo`) converted to `raise InvariantError(...)`. Invariants now
+  enforced unconditionally -- `python -O` cannot strip them
+- **Error swallowing fix (2 bugs)**: `compute_functionals` no longer wraps `PostconditionError`
+  in `DOLFINxAPIError`; `assemble` no longer converts `DOLFINxAPIError` to plain dict. Both
+  fixed via `except DOLFINxMCPError: raise` before generic `except Exception`
+- **Missing invariant check**: Added `if __debug__: session.check_invariants()` to
+  `run_custom_code` (total debug invariant checks: 20)
+
+### Testing
+- 3 new contract tests (56 contract tests total, 95 local + 13 Docker = 108 total)
+- Phase 8: PostconditionError preservation (1), DOLFINxAPIError preservation (1),
+  run_custom_code invariant check (1)
+- 10 existing tests updated: `InvariantError` -> `InvariantError`
+- Correspondence table: 14 entries updated `InvariantError` -> `InvariantError`
+
+### Infrastructure
+- Dockerfile: added `pytest-asyncio` to pip install (eliminates ad-hoc install during Docker tests)
+
+---
+
 ## [0.1.6] - 2026-02-06
 
 ### Added
@@ -172,11 +277,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ```
 CONTRACT                     LOCATION                     ENFORCED BY
 ---------------------------------------------------------------------------
-INV: num_cells > 0           MeshInfo.__post_init__       AssertionError
-INV: tdim <= gdim            MeshInfo.__post_init__       AssertionError
-INV: degree >= 0             FunctionSpaceInfo.__post     AssertionError
-INV: num_dofs > 0            FunctionSpaceInfo.__post     AssertionError
-INV: iterations >= 0         SolutionInfo.__post_init__   AssertionError
+INV: num_cells > 0           MeshInfo.__post_init__       InvariantError
+INV: tdim <= gdim            MeshInfo.__post_init__       InvariantError
+INV: degree >= 0             FunctionSpaceInfo.__post     InvariantError
+INV: num_dofs > 0            FunctionSpaceInfo.__post     InvariantError
+INV: iterations >= 0         SolutionInfo.__post_init__   InvariantError
 INV: active_mesh valid       check_invariants()           InvariantError
 INV: no dangling space ref   check_invariants()           InvariantError
 INV: no dangling func ref    check_invariants()           InvariantError
@@ -218,11 +323,11 @@ PRE: tag_values non-empty    create_submesh               PreconditionError
 PRE: tag_values all int      create_submesh               PreconditionError
 POST: l2_norm >= 0           get_solver_diagnostics       PostconditionError
 POST: error_val finite       compute_error                PostconditionError
-INV: 1 <= gdim <= 3          MeshInfo.__post_init__       AssertionError
-INV: dofs_constrained > 0    BCInfo.__post_init__         AssertionError
-INV: parent/child non-empty  EntityMapInfo.__post_init__  AssertionError
-INV: name non-empty (Form)   FormInfo.__post_init__       AssertionError
-INV: form is not None        FormInfo.__post_init__       AssertionError
+INV: 1 <= gdim <= 3          MeshInfo.__post_init__       InvariantError
+INV: dofs_constrained > 0    BCInfo.__post_init__         InvariantError
+INV: parent/child non-empty  EntityMapInfo.__post_init__  InvariantError
+INV: name non-empty (Form)   FormInfo.__post_init__       InvariantError
+INV: form is not None        FormInfo.__post_init__       InvariantError
 INV: no dangling solution    check_invariants()           InvariantError
 INV: no dangling mesh_tags   check_invariants()           InvariantError
 INV: no dangling entity_map  check_invariants()           InvariantError
@@ -232,4 +337,22 @@ PRE: code non-empty          run_custom_code              PreconditionError
 PRE: sub_space >= 0          apply_boundary_condition     PreconditionError
 PRE: degree 0-10             create_function_space        PreconditionError
 POST: entity_maps cleaned    remove_mesh                  PostconditionError
+POST: name == registry key   get_mesh                     PostconditionError (debug)
+POST: name == registry key   get_space                    PostconditionError (debug)
+POST: mesh_name in meshes    get_space                    PostconditionError (debug)
+POST: name == registry key   get_function                 PostconditionError (debug)
+POST: space in fn_spaces     get_function                 PostconditionError (debug)
+POST: mesh_name in meshes    get_only_space               PostconditionError (debug)
+POST: value is finite        evaluate_solution            PostconditionError
+POST: value is finite        query_point_values           PostconditionError
+POST: result is not None     safe_evaluate                InvalidUFLExpressionError
+POST: required keys present  build_namespace              PostconditionError (debug)
+POST: name == registry key   get_solution                 PostconditionError (debug)
+POST: space in fn_spaces     get_solution                 PostconditionError (debug)
+POST: name == registry key   get_form                     PostconditionError (debug)
+POST: refined cells > orig   refine_mesh                  PostconditionError
+USE:  get_form("bilinear")   solve                        Replaces manual check
+USE:  get_form("linear")     solve                        Replaces manual check
+USE:  get_form(bi/lin)       solve_time_dependent         Replaces manual check
+USE:  get_solution(name)     get_solver_diagnostics       Replaces direct access
 ```

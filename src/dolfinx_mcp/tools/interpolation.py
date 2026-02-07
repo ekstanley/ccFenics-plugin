@@ -8,7 +8,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, PreconditionError, handle_tool_errors
+from ..errors import DOLFINxAPIError, DOLFINxMCPError, PreconditionError, handle_tool_errors
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,8 @@ async def interpolate(
             target_func.interpolate(
                 lambda x: _eval_interp_expression(expression, x)
             )
+        except DOLFINxMCPError:
+            raise
         except Exception as exc:
             raise DOLFINxAPIError(
                 f"Failed to interpolate expression '{expression}': {exc}",
@@ -135,6 +137,8 @@ async def interpolate(
     if source_mesh is None:
         try:
             target_func.interpolate(source_func)
+        except DOLFINxMCPError:
+            raise
         except Exception as exc:
             raise DOLFINxAPIError(
                 f"Failed to interpolate from '{source_function}': {exc}",
@@ -182,6 +186,8 @@ async def interpolate(
 
         # Perform interpolation
         target_func.interpolate(source_func, cells=interpolation_data)
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(
             f"Failed cross-mesh interpolation: {exc}",
@@ -264,6 +270,8 @@ async def create_discrete_operator(
             operator = dolfinx.fem.discrete_curl(V_source, V_target)
         elif operator_type == "interpolation":
             operator = dolfinx.fem.petsc.interpolation_matrix(V_source, V_target)
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(
             f"Failed to create {operator_type} operator: {exc}",

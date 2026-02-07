@@ -14,7 +14,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, FunctionNotFoundError, PostconditionError, PreconditionError, handle_tool_errors
+from ..errors import DOLFINxAPIError, DOLFINxMCPError, FunctionNotFoundError, PostconditionError, PreconditionError, handle_tool_errors
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -110,6 +110,8 @@ async def compute_error(
         u_exact.interpolate(
             lambda x: _eval_exact_expression(exact, x)
         )
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(
             f"Failed to interpolate exact solution: {exc}",
@@ -208,6 +210,8 @@ async def export_solution(
                 for fname, func in funcs_to_export.items():
                     func.name = fname
                     xdmf.write_function(func)
+        except DOLFINxMCPError:
+            raise
         except Exception as exc:
             raise DOLFINxAPIError(f"Failed to write XDMF file: {exc}") from exc
 
@@ -219,6 +223,8 @@ async def export_solution(
                 for fname, func in funcs_to_export.items():
                     func.name = fname
                     vtk.write_function(func)
+        except DOLFINxMCPError:
+            raise
         except Exception as exc:
             raise DOLFINxAPIError(f"Failed to write VTK file: {exc}") from exc
 
@@ -307,6 +313,11 @@ async def evaluate_solution(
             # Point is inside mesh, evaluate at first colliding cell
             point_3d = points_array[:, i]
             value = uh.eval(point_3d, cells[0])
+            # Postcondition: evaluated values must be finite
+            if not np.isfinite(value).all():
+                raise PostconditionError(
+                    f"evaluate_solution(): non-finite value at point {point}"
+                )
             results.append({
                 "point": point,
                 "value": value.tolist() if hasattr(value, 'tolist') else float(value),
@@ -379,6 +390,8 @@ async def compute_functionals(
                 "expression": expr_str,
                 "value": fval,
             })
+        except DOLFINxMCPError:
+            raise
         except Exception as exc:
             raise DOLFINxAPIError(
                 f"Failed to compute functional '{expr_str}': {exc}",
@@ -470,6 +483,11 @@ async def query_point_values(
             # Point is inside mesh, evaluate at first colliding cell
             point_3d = points_array[:, i]
             value = uh.eval(point_3d, cells[0])
+            # Postcondition: evaluated values must be finite
+            if not np.isfinite(value).all():
+                raise PostconditionError(
+                    f"query_point_values(): non-finite value at point {point}"
+                )
             results.append({
                 "point": point,
                 "value": value.tolist() if hasattr(value, 'tolist') else float(value),
@@ -579,6 +597,8 @@ async def plot_solution(
             "file_size_bytes": file_size,
         }
 
+    except DOLFINxMCPError:
+        raise
     except Exception as exc:
         raise DOLFINxAPIError(
             f"Failed to generate plot: {exc}",
