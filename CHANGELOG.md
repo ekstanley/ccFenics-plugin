@@ -6,6 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.6] - 2026-02-06
+
+### Added
+
+#### Design-by-Contract Phase 22: Test Infrastructure + Edge Case Tests
+- **3 new pytest fixtures** in `tests/conftest.py`: `mock_ctx`, `populated_session`,
+  `mock_ctx_populated` -- promotes common test patterns from module-level helpers
+- **`_make_form_info` helper** in test_contracts.py for solver postcondition tests
+- **4 new postcondition edge-case tests** in `TestPhase22PostconditionEdgeCases`:
+  - `test_solve_postcondition_nan_solution`: solve() fires SolverError on NaN
+  - `test_solve_postcondition_negative_l2_norm`: solve() fires PostconditionError on L2 < 0
+  - `test_get_solver_diagnostics_postcondition_negative_l2`: diagnostics fires on L2 < 0
+  - `test_compute_error_postcondition_nan`: compute_error() fires on NaN error value
+
+**v0.2.6 metrics:**
+- 137 contract tests (was 133), 174 local tests (was 170)
+- 23 Docker integration tests
+- 197 total tests
+
+---
+
 ## [0.2.5] - 2026-02-06
 
 ### Added

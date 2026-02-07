@@ -81,6 +81,10 @@ def _make_solution_info(name: str = "u_h", space_name: str = "V") -> SolutionInf
     )
 
 
+def _make_form_info(name: str = "bilinear") -> FormInfo:
+    return FormInfo(name=name, form=MagicMock(), ufl_form=MagicMock())
+
+
 def _populated_session() -> SessionState:
     """Create a valid, populated session for invariant testing."""
     s = SessionState()
@@ -2435,3 +2439,133 @@ class TestPhase20LocalTestCompletion:
         result = await get_solver_diagnostics(ctx=ctx)
 
         assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# Phase 22: Postcondition edge-case tests (4 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestPhase22PostconditionEdgeCases:
+    """Edge-case postcondition tests for solver and compute_error paths."""
+
+    @pytest.mark.asyncio
+    async def test_solve_postcondition_nan_solution(self):
+        """solve() fires SolverError when solution contains NaN."""
+        import sys
+        from dolfinx_mcp.tools.solver import solve
+
+        session = _populated_session()
+        session.forms["bilinear"] = _make_form_info("bilinear")
+        session.forms["linear"] = _make_form_info("linear")
+        ctx = _mock_ctx(session)
+
+        # Mock full dolfinx hierarchy + numpy
+        mock_dolfinx = MagicMock()
+        mock_np = MagicMock()
+
+        # np.isfinite(uh.x.array).all() returns False -> NaN detected
+        mock_np.isfinite.return_value.all.return_value = False
+
+        with patch.dict(sys.modules, {
+            "dolfinx": mock_dolfinx,
+            "dolfinx.fem": mock_dolfinx.fem,
+            "dolfinx.fem.petsc": mock_dolfinx.fem.petsc,
+            "numpy": mock_np,
+        }):
+            result = await solve(solver_type="direct", ctx=ctx)
+
+        assert result["error"] == "SOLVER_ERROR"
+        assert "NaN" in result["message"] or "Inf" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_solve_postcondition_negative_l2_norm(self):
+        """solve() fires PostconditionError when L2 norm is negative."""
+        import sys
+        from dolfinx_mcp.tools.solver import solve
+
+        session = _populated_session()
+        session.forms["bilinear"] = _make_form_info("bilinear")
+        session.forms["linear"] = _make_form_info("linear")
+        ctx = _mock_ctx(session)
+
+        # Mock full dolfinx hierarchy + numpy
+        mock_dolfinx = MagicMock()
+        mock_np = MagicMock()
+
+        # np.isfinite passes (solution is finite)
+        mock_np.isfinite.return_value.all.return_value = True
+
+        # Solver converged
+        mock_problem = mock_dolfinx.fem.petsc.LinearProblem.return_value
+        mock_problem.solver.getConvergedReason.return_value = 1
+        mock_problem.solver.getIterationNumber.return_value = 10
+        mock_problem.solver.getResidualNorm.return_value = 1e-12
+
+        with patch.dict(sys.modules, {
+            "dolfinx": mock_dolfinx,
+            "dolfinx.fem": mock_dolfinx.fem,
+            "dolfinx.fem.petsc": mock_dolfinx.fem.petsc,
+            "numpy": mock_np,
+        }), patch("dolfinx_mcp.utils.compute_l2_norm", return_value=-1.0):
+            result = await solve(solver_type="direct", ctx=ctx)
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "non-negative" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_get_solver_diagnostics_postcondition_negative_l2(self):
+        """get_solver_diagnostics() fires PostconditionError when L2 norm < 0."""
+        from dolfinx_mcp.tools.solver import get_solver_diagnostics
+
+        session = _populated_session()
+        # Ensure solution has function_space with dofmap
+        mock_fn = MagicMock()
+        mock_fn.function_space.dofmap.index_map.size_global = 100
+        mock_fn.function_space.dofmap.index_map_bs = 1
+        session.solutions["u_h"] = SolutionInfo(
+            name="u_h", function=mock_fn, space_name="V",
+            converged=True, iterations=5, residual_norm=1e-10, wall_time=0.5,
+        )
+        ctx = _mock_ctx(session)
+
+        with patch("dolfinx_mcp.utils.compute_l2_norm", return_value=-1.0):
+            result = await get_solver_diagnostics(ctx=ctx)
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "non-negative" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_compute_error_postcondition_nan(self):
+        """compute_error() fires PostconditionError when error value is NaN."""
+        import sys
+        from dolfinx_mcp.tools.postprocess import compute_error
+
+        session = _populated_session()
+        # Set up solution with function that has function_space
+        mock_fn = MagicMock()
+        mock_fn.function_space = MagicMock()
+        session.solutions["u_h"] = SolutionInfo(
+            name="u_h", function=mock_fn, space_name="V",
+            converged=True, iterations=5, residual_norm=1e-10, wall_time=0.5,
+        )
+        ctx = _mock_ctx(session)
+
+        # Mock full dolfinx hierarchy + numpy + ufl
+        mock_dolfinx = MagicMock()
+        mock_np = MagicMock()
+        mock_ufl = MagicMock()
+
+        # np.sqrt returns NaN so error_val = float(NaN) = NaN
+        mock_np.sqrt.return_value = float("nan")
+
+        with patch.dict(sys.modules, {
+            "dolfinx": mock_dolfinx,
+            "dolfinx.fem": mock_dolfinx.fem,
+            "numpy": mock_np,
+            "ufl": mock_ufl,
+        }):
+            result = await compute_error(exact="x[0]", norm_type="L2", ctx=ctx)
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "finite" in result["message"]
