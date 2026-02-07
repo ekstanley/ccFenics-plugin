@@ -30,4 +30,7 @@ USER mcpuser
 # Working directory for simulation output
 WORKDIR /workspace
 
+# Expose port for HTTP transport modes (streamable-http, sse)
+EXPOSE 8000
+
 ENTRYPOINT ["python", "-m", "dolfinx_mcp"]

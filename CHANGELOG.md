@@ -6,6 +6,80 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.4.0] - 2026-02-07
+
+### Added
+
+#### JupyterLab MCP Extension (Option G: Phases 0-2 + Phase 28)
+
+IPython magic extension for calling DOLFINx MCP tools from Jupyter notebook
+cells, with inline image display and dual-transport support.
+
+**New package: `dolfinx_mcp_jupyter`** (5 modules):
+- `config.py`: `MCPConfig` dataclass with env var defaults + `__post_init__` validation
+- `connection.py`: `MCPConnection` wrapping MCP SDK `ClientSession` (stdio/HTTP)
+- `display.py`: Result rendering (JSON tables, inline PNG, error panels)
+- `magics.py`: 5 IPython magics (`%dolfinx_connect`, `%dolfinx_disconnect`,
+  `%dolfinx_tools`, `%dolfinx`, `%%dolfinx_workflow`)
+- `__init__.py`: Extension loader via `%load_ext dolfinx_mcp_jupyter`
+
+**Server enhancements:**
+- `plot_solution` now returns `ImageContent` (base64 PNG) alongside metadata
+- Dual transport: `python -m dolfinx_mcp --transport streamable-http` for HTTP mode
+- CLI argparse for `--transport`, `--host`, `--port` in `__main__.py`
+- `_app.py` reads `DOLFINX_MCP_HOST`/`DOLFINX_MCP_PORT` env vars
+- `server.py` reads `DOLFINX_MCP_TRANSPORT` env var
+- `Dockerfile` adds `EXPOSE 8000` for HTTP mode
+- `docker-compose.lab.yml` for JupyterLab + MCP server sidecar deployment
+
+**Infrastructure:**
+- `.mcp.json` volume mount (`./workspace:/workspace`) for file export
+- `pyproject.toml` jupyter optional dependency group (`ipython`, `nest-asyncio`, `mcp`)
+- Wheel target includes `src/dolfinx_mcp_jupyter`
+
+**Design-by-contract enforcement (Phase 28):**
+- `MCPConfig.__post_init__`: transport enum, timeout positive, command/url non-empty
+- `MCPConnection.call_tool()`: tool name non-empty precondition
+- `MCPConnection.connect()/disconnect()`: state transition postconditions
+- `display.render_result()`: list type guard at rendering boundary
+- Bare `assert` replaced with explicit `RuntimeError` guard
+
+**Testing:**
+- 42 new tests across 4 files:
+  - `test_jupyter_config.py`: defaults, env overrides, explicit args, contract violations
+  - `test_jupyter_magics.py`: `_parse_kwargs` coercion (bool/int/float/json/string/expression)
+  - `test_jupyter_connection.py`: initial state, config, contract violations
+  - `test_jupyter_display.py`: type guard contract violations
+
+**v0.4.0 metrics:**
+- 5 new IPython magics, 2 transport modes (stdio + HTTP)
+- Jupyter package DbC: 4 preconditions, 3 postconditions, 4 invariants
+- 42 new Jupyter tests + 193 existing server tests
+- Ruff lint: 0 errors
+
+**Files added (9):**
+- `src/dolfinx_mcp_jupyter/__init__.py`
+- `src/dolfinx_mcp_jupyter/config.py`
+- `src/dolfinx_mcp_jupyter/connection.py`
+- `src/dolfinx_mcp_jupyter/display.py`
+- `src/dolfinx_mcp_jupyter/magics.py`
+- `docker-compose.lab.yml`
+- `tests/test_jupyter_config.py`
+- `tests/test_jupyter_connection.py`
+- `tests/test_jupyter_magics.py`
+- `tests/test_jupyter_display.py`
+
+**Files modified (7):**
+- `src/dolfinx_mcp/__main__.py` (dual transport CLI)
+- `src/dolfinx_mcp/_app.py` (host/port env vars)
+- `src/dolfinx_mcp/server.py` (transport env var)
+- `src/dolfinx_mcp/tools/postprocess.py` (ImageContent return)
+- `Dockerfile` (EXPOSE 8000)
+- `.mcp.json` (volume mount)
+- `pyproject.toml` (version, jupyter extras, wheel target)
+
+---
+
 ## [0.3.1] - 2026-02-07
 
 ### Fixed

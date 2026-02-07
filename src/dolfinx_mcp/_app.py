@@ -1,6 +1,6 @@
 """FastMCP application instance and lifespan management.
 
-This module exists to break circular imports. Tool modules import `mcp`
+This module exists to break circular imports. Tool modules import ``mcp``
 from here; server.py imports tool modules to trigger decorator registration.
 
 Import DAG:
@@ -18,6 +18,7 @@ Import DAG:
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -43,4 +44,6 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[SessionState]:
 mcp = FastMCP(
     "dolfinx-mcp",
     lifespan=app_lifespan,
+    host=os.environ.get("DOLFINX_MCP_HOST", "127.0.0.1"),
+    port=int(os.environ.get("DOLFINX_MCP_PORT", "8000")),
 )

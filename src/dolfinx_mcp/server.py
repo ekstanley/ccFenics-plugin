@@ -1,10 +1,12 @@
 """DOLFINx MCP server entry point.
 
 Configures logging, imports all tool/prompt/resource modules to trigger
-decorator registration, then starts the MCP stdio transport.
+decorator registration, then starts the MCP transport (stdio or HTTP).
 """
 
 from __future__ import annotations
+
+import os
 
 from .logging_config import configure_logging
 
@@ -31,5 +33,6 @@ from .tools import (  # noqa: E402, F401
 
 
 def main() -> None:
-    """Start the DOLFINx MCP server with stdio transport."""
-    mcp.run(transport="stdio")
+    """Start the DOLFINx MCP server."""
+    transport = os.environ.get("DOLFINX_MCP_TRANSPORT", "stdio")
+    mcp.run(transport=transport)

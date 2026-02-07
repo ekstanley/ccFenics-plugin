@@ -12,6 +12,7 @@ import os
 from typing import Any
 
 from mcp.server.fastmcp import Context
+from mcp.server.fastmcp.utilities.types import Image
 
 from .._app import mcp
 from ..errors import (
@@ -606,11 +607,14 @@ async def plot_solution(
             session.check_invariants()
 
         logger.info("Generated %s plot at %s (%d bytes)", plot_type, output_path, file_size)
-        return {
-            "file_path": output_path,
-            "plot_type": plot_type,
-            "file_size_bytes": file_size,
-        }
+        return [
+            {
+                "file_path": output_path,
+                "plot_type": plot_type,
+                "file_size_bytes": file_size,
+            },
+            Image(path=output_path),
+        ]
 
     except DOLFINxMCPError:
         raise

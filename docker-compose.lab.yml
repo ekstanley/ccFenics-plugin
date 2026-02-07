@@ -1,0 +1,28 @@
+# Docker Compose for JupyterLab + DOLFINx MCP sidecar mode.
+#
+# Usage:
+#   docker-compose -f docker-compose.lab.yml up --build
+#
+# Access JupyterLab at http://localhost:8888
+# MCP server runs on internal network at mcp-server:8000
+
+services:
+  jupyter:
+    image: dolfinx/lab:stable
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./workspace:/workspace
+    environment:
+      - DOLFINX_MCP_TRANSPORT=streamable-http
+      - DOLFINX_MCP_URL=http://mcp-server:8000/mcp
+    depends_on:
+      - mcp-server
+
+  mcp-server:
+    build: .
+    command: ["--transport", "streamable-http", "--host", "0.0.0.0"]
+    volumes:
+      - ./workspace:/workspace
+    expose:
+      - "8000"
