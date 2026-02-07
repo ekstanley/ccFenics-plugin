@@ -6,6 +6,52 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.4.1] - 2026-02-07
+
+### Fixed
+
+#### CI/CD Hardening + Test Gap Closure (Phase 29)
+
+**CI blind spots resolved:**
+- Lint scope broadened from `src/dolfinx_mcp/` to `src/` -- now covers both
+  `dolfinx_mcp` and `dolfinx_mcp_jupyter` packages
+- Test dependencies expanded from `.[dev]` to `.[dev,jupyter]` -- Jupyter test
+  imports no longer fail in CI
+
+**3 pre-existing test failures fixed:**
+- `test_assemble_scalar_preserves_api_error` (Phase 8)
+- `test_assemble_form_eval_preserves_structured_error` (Phase 9)
+- `test_assemble_assembly_returns_structured_error` (Phase 9)
+- Root cause: missing `"ufl": MagicMock()` in `sys.modules` patches for
+  `assemble()` tests. The `assemble()` function imports `ufl` at runtime,
+  but test mocks only patched `dolfinx`/`dolfinx.fem`/`dolfinx.fem.petsc`
+
+### Added
+
+**New test coverage for untested infrastructure:**
+- `tests/test_cli.py` (6 tests): CLI `--help` output validation, transport
+  choices, default port, invalid transport/port/flag rejection. Uses subprocess
+  to avoid `__main__.py` module-level side effects
+- `tests/test_logging_config.py` (5 tests): stderr handler verification,
+  default/custom log levels, third-party logger suppression, handler cleanup
+
+**v0.4.1 metrics:**
+- Test suite: 227 passed, 0 failed, 3 skipped (was 213 passed, 3 failed)
+- 11 new tests (6 CLI + 5 logging)
+- 3 pre-existing failures resolved
+- CI coverage: both packages linted and tested
+
+**Files added (2):**
+- `tests/test_cli.py`
+- `tests/test_logging_config.py`
+
+**Files modified (3):**
+- `.github/workflows/ci.yml` (lint scope + test deps)
+- `tests/test_contracts.py` (3 ufl mock fixes)
+- `pyproject.toml` (version bump)
+
+---
+
 ## [0.4.0] - 2026-02-07
 
 ### Added
