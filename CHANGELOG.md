@@ -6,6 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.11] - 2026-02-06
+
+### Fixed
+
+#### Design-by-Contract Phase 12: Postcondition Error Type Correction
+- **Interpolation postcondition error types (3 locations in interpolation.py)**: Changed
+  `DOLFINxAPIError` to `PostconditionError` for NaN/Inf finiteness checks after expression-based,
+  same-mesh function, and cross-mesh interpolation. A postcondition (result violated expectations)
+  is semantically distinct from an API error (call was invalid). All three checks now correctly
+  produce `POSTCONDITION_VIOLATED` error codes
+- **Import addition**: `PostconditionError` added to `interpolation.py` import block
+
+### Testing
+- 2 new contract tests (80 contract tests total, 119 local + 13 Docker = 132 total)
+- Phase 12: expression interpolation NaN error type (1), function interpolation NaN error type (1)
+- Fixed: `test_refine_mesh_postcondition_cell_count` tautology -- original and refined now use
+  distinct `num_cells` (100 vs 80/200) instead of both defaulting to 100
+- Fixed: Docker test B1 assertion updated from `DOLFINX_API_ERROR` to `POSTCONDITION_VIOLATED`
+
+---
+
 ## [0.1.10] - 2026-02-06
 
 ### Changed
@@ -355,4 +376,5 @@ USE:  get_form("bilinear")   solve                        Replaces manual check
 USE:  get_form("linear")     solve                        Replaces manual check
 USE:  get_form(bi/lin)       solve_time_dependent         Replaces manual check
 USE:  get_solution(name)     get_solver_diagnostics       Replaces direct access
+POST: interpolation finite   interpolate (3 paths)        PostconditionError
 ```

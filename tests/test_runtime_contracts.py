@@ -241,8 +241,8 @@ class TestNegativePathContracts:
     async def test_interpolate_nan_rejected(self, session, ctx):
         """B1: NaN interpolation fires finiteness postcondition.
 
-        Exercises: interpolation.py:106 -- ``not np.isfinite(...)`` fires
-        DOLFINxAPIError("Interpolation produced NaN/Inf values.").
+        Exercises: interpolation.py:108 -- ``not np.isfinite(...)`` fires
+        PostconditionError("Interpolation produced NaN/Inf values.").
         handle_tool_errors catches it, returns error dict.
         """
         from dolfinx_mcp.tools.mesh import create_unit_square
@@ -261,7 +261,7 @@ class TestNegativePathContracts:
             expression="np.nan + 0*x[0]",
             ctx=ctx,
         )
-        assert result["error"] == "DOLFINX_API_ERROR"
+        assert result["error"] == "POSTCONDITION_VIOLATED"
         assert "NaN" in result["message"] or "Inf" in result["message"]
 
     @pytest.mark.asyncio

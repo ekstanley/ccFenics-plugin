@@ -29,12 +29,12 @@ from dolfinx_mcp.session import (
 # ---------------------------------------------------------------------------
 
 
-def _make_mesh_info(name: str = "m1") -> MeshInfo:
+def _make_mesh_info(name: str = "m1", num_cells: int = 100) -> MeshInfo:
     return MeshInfo(
         name=name,
         mesh=MagicMock(),
         cell_type="triangle",
-        num_cells=100,
+        num_cells=num_cells,
         num_vertices=64,
         gdim=2,
         tdim=2,
@@ -1055,31 +1055,31 @@ class TestPhase11Contracts:
 
     # -- refine_mesh postcondition test --
 
-    def test_refine_mesh_postcondition_cell_count(self):
+    def test_refine_mesh_postcondition_cell_count_fires(self):
         """Postcondition fires when refined mesh has <= original cell count.
 
-        Instead of mocking the full dolfinx.mesh.refine pipeline, directly
-        verify the postcondition logic by constructing a scenario where
-        refined_info.num_cells <= mesh_info.num_cells.
+        Directly verify the postcondition logic by constructing a scenario
+        where refined_info.num_cells <= mesh_info.num_cells.
         """
-        # The postcondition in refine_mesh checks:
-        #   if refined_info.num_cells <= mesh_info.num_cells:
-        #       raise PostconditionError(...)
-        # We verify this contract by testing the condition directly,
-        # since the full refine_mesh pipeline requires complex mocking
-        # of dolfinx topology objects.
-        original = _make_mesh_info("m1")  # num_cells=100
-        refined = _make_mesh_info("m1_refined")  # num_cells=100 (same!)
+        original = _make_mesh_info("m1", num_cells=100)
+        refined = _make_mesh_info("m1_refined", num_cells=80)  # fewer cells -> violation
 
         # Simulate the postcondition check from refine_mesh
-        if refined.num_cells <= original.num_cells:
-            with pytest.raises(PostconditionError, match="expected more than original"):
-                raise PostconditionError(
-                    f"refine_mesh(): refined mesh has {refined.num_cells} cells, "
-                    f"expected more than original {original.num_cells}"
-                )
-        else:
-            pytest.fail("Test setup error: refined should have <= original cells")
+        assert refined.num_cells <= original.num_cells, \
+            "Test setup: refined must have <= original cells"
+        with pytest.raises(PostconditionError, match="expected more than original"):
+            raise PostconditionError(
+                f"refine_mesh(): refined mesh has {refined.num_cells} cells, "
+                f"expected more than original {original.num_cells}"
+            )
+
+    def test_refine_mesh_postcondition_cell_count_passes(self):
+        """No postcondition fires when refined mesh has more cells."""
+        original = _make_mesh_info("m1", num_cells=100)
+        refined = _make_mesh_info("m1_refined", num_cells=200)  # more cells -> OK
+
+        assert refined.num_cells > original.num_cells, \
+            "Refinement must increase cell count"
 
     @pytest.mark.asyncio
     async def test_refine_mesh_postcondition_integration(self):
@@ -1121,3 +1121,80 @@ class TestPhase11Contracts:
 
         assert result["error"] == "POSTCONDITION_VIOLATED"
         assert "expected more than original" in result["message"]
+
+
+class TestPhase12InterpolationPostconditionErrorType:
+    """Phase 12: verify interpolation NaN postconditions produce POSTCONDITION_VIOLATED."""
+
+    @pytest.mark.asyncio
+    async def test_interpolate_expression_postcondition_error_type(self):
+        """Expression-based interpolation NaN check must raise PostconditionError."""
+        import sys
+
+        from dolfinx_mcp.tools.interpolation import interpolate
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+
+        # Mock function whose .x.array triggers isfinite -> False (NaN)
+        mock_func = MagicMock()
+        mock_isfinite_result = MagicMock()
+        mock_isfinite_result.all.return_value = False
+        session.functions["f"] = _make_function_info("f", "V")
+        session.functions["f"].function = mock_func
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = session
+
+        # Mock numpy so isfinite returns False (simulating NaN)
+        mock_np = MagicMock()
+        mock_np.isfinite.return_value = mock_isfinite_result
+        mock_np.full.return_value = [0.0]
+
+        mock_dolfinx = MagicMock()
+        with patch.dict(sys.modules, {
+            "numpy": mock_np,
+            "dolfinx": mock_dolfinx,
+            "dolfinx.fem": mock_dolfinx.fem,
+        }):
+            result = await interpolate(target="f", expression="0*x[0]", ctx=ctx)
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "NaN" in result["message"] or "Inf" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_interpolate_function_postcondition_error_type(self):
+        """Function-based interpolation NaN check must raise PostconditionError."""
+        import sys
+
+        from dolfinx_mcp.tools.interpolation import interpolate
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+
+        # Source and target functions
+        session.functions["src"] = _make_function_info("src", "V")
+        session.functions["tgt"] = _make_function_info("tgt", "V")
+
+        # Mock target function -- isfinite will return False (NaN postcondition)
+        mock_isfinite_result = MagicMock()
+        mock_isfinite_result.all.return_value = False
+
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = session
+
+        mock_np = MagicMock()
+        mock_np.isfinite.return_value = mock_isfinite_result
+
+        mock_dolfinx = MagicMock()
+        with patch.dict(sys.modules, {
+            "numpy": mock_np,
+            "dolfinx": mock_dolfinx,
+            "dolfinx.fem": mock_dolfinx.fem,
+        }):
+            result = await interpolate(target="tgt", source_function="src", ctx=ctx)
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "NaN" in result["message"] or "Inf" in result["message"]

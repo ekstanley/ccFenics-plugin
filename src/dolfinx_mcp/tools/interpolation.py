@@ -8,7 +8,13 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, DOLFINxMCPError, PreconditionError, handle_tool_errors
+from ..errors import (
+    DOLFINxAPIError,
+    DOLFINxMCPError,
+    PostconditionError,
+    PreconditionError,
+    handle_tool_errors,
+)
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -106,7 +112,7 @@ async def interpolate(
 
         # Postcondition: interpolation result must be finite
         if not np.isfinite(target_func.x.array).all():
-            raise DOLFINxAPIError(
+            raise PostconditionError(
                 "Interpolation produced NaN/Inf values.",
                 suggestion="Check source expression or function for validity.",
             )
@@ -147,7 +153,7 @@ async def interpolate(
 
         # Postcondition: interpolation result must be finite
         if not np.isfinite(target_func.x.array).all():
-            raise DOLFINxAPIError(
+            raise PostconditionError(
                 "Interpolation produced NaN/Inf values.",
                 suggestion="Check source expression or function for validity.",
             )
@@ -196,7 +202,7 @@ async def interpolate(
 
     # Postcondition: interpolation result must be finite
     if not np.isfinite(target_func.x.array).all():
-        raise DOLFINxAPIError(
+        raise PostconditionError(
             "Interpolation produced NaN/Inf values.",
             suggestion="Check source expression or function for validity.",
         )
