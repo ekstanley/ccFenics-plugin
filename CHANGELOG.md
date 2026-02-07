@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.7] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 23: Helper Type Annotations
+- **8 internal helper functions** fully type-annotated, enabling static contract
+  verification of parameter types (preconditions) and return types (postconditions)
+- **3 files gain `Callable` import**: errors.py, mesh.py, problem.py
+- Functions annotated in: mesh.py (1), problem.py (4), interpolation.py (1),
+  postprocess.py (1), errors.py (1)
+
+**v0.2.7 metrics:**
+- 8/8 helper functions type-annotated (was 0/8)
+- 174 local tests, 23 Docker tests, 197 total
+- Zero runtime impact (annotations are no-ops at runtime)
+
+---
+
 ## [0.2.6] - 2026-02-06
 
 ### Added

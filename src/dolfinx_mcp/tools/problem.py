@@ -9,7 +9,7 @@ container (--network none, non-root, --rm) provides the security boundary.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from mcp.server.fastmcp import Context
 
@@ -38,7 +38,7 @@ def _get_session(ctx: Context) -> SessionState:
 # ---------------------------------------------------------------------------
 
 
-def _make_boundary_fn(expr: str):
+def _make_boundary_fn(expr: str) -> Callable[[Any], Any]:
     """Create a boundary marker callable from a string expression.
 
     The expression should use x as a (3, N) array.
@@ -62,7 +62,7 @@ def _make_boundary_fn(expr: str):
     return marker
 
 
-def _eval_bc_expression(expr: str, x, ns: dict) -> Any:
+def _eval_bc_expression(expr: str, x: Any, ns: dict[str, Any]) -> Any:
     """Evaluate a BC value expression at coordinate arrays."""
     import numpy as np
 
@@ -76,7 +76,7 @@ def _eval_bc_expression(expr: str, x, ns: dict) -> Any:
     return result
 
 
-def _eval_material_expression(expr: str, x, mesh) -> Any:
+def _eval_material_expression(expr: str, x: Any, mesh: Any) -> Any:
     """Evaluate a material property expression at coordinate arrays."""
     import numpy as np
 
@@ -99,7 +99,7 @@ def _eval_material_expression(expr: str, x, mesh) -> Any:
     return result
 
 
-def _restricted_eval(expr_str: str, namespace: dict) -> Any:
+def _restricted_eval(expr_str: str, namespace: dict[str, Any]) -> Any:
     """Evaluate expression in a restricted namespace.
 
     SECURITY: This uses Python's eval intentionally. UFL is Python syntax

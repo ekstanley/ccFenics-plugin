@@ -24,7 +24,7 @@ def _get_session(ctx: Context) -> SessionState:
     return ctx.request_context.lifespan_context
 
 
-def _eval_exact_expression(expr: str, x) -> Any:
+def _eval_exact_expression(expr: str, x: Any) -> Any:
     """Evaluate an exact solution expression at coordinate arrays.
 
     SECURITY: Restricted namespace, Docker-sandboxed.

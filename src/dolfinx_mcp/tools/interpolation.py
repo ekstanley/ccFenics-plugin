@@ -25,7 +25,7 @@ def _get_session(ctx: Context) -> SessionState:
     return ctx.request_context.lifespan_context
 
 
-def _eval_interp_expression(expr: str, x):
+def _eval_interp_expression(expr: str, x: Any) -> Any:
     """Evaluate an interpolation expression at coordinate arrays.
 
     SECURITY: This uses Python's eval intentionally. DOLFINx interpolation

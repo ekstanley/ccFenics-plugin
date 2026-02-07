@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from mcp.server.fastmcp import Context
 
@@ -330,7 +330,7 @@ async def create_mesh(
     return result
 
 
-def _make_marker_fn(condition: str):
+def _make_marker_fn(condition: str) -> Callable[[Any], Any]:
     """Create a boundary marker function from a condition string.
 
     Args:

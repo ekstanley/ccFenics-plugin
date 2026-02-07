@@ -6,7 +6,7 @@ import functools
 import inspect
 import logging
 import traceback
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ class InvariantError(DOLFINxMCPError):
 # --- Decorator ---
 
 
-def handle_tool_errors(fn):
+def handle_tool_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator that catches DOLFINxMCPError and generic exceptions,
     returning structured error dicts instead of raising.
 
