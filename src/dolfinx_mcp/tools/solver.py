@@ -401,15 +401,8 @@ async def get_solver_diagnostics(
 
     session = _get_session(ctx)
 
-    if not session.solutions:
-        raise DOLFINxAPIError(
-            "No solutions available.",
-            suggestion="Run solve() or solve_time_dependent() first.",
-        )
-
     # Get the last solution
-    last_solution_name = list(session.solutions.keys())[-1]
-    sol_info = session.get_solution(last_solution_name)
+    sol_info = session.get_last_solution()
 
     # Compute number of DOFs
     V = sol_info.function.function_space

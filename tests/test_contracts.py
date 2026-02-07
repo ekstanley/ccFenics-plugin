@@ -1198,3 +1198,133 @@ class TestPhase12InterpolationPostconditionErrorType:
 
         assert result["error"] == "POSTCONDITION_VIOLATED"
         assert "NaN" in result["message"] or "Inf" in result["message"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 13: Accessor tests -- get_mesh_tags, get_entity_map, get_last_solution
+# ---------------------------------------------------------------------------
+
+
+def _make_mesh_tags_info(
+    name: str = "tags0", mesh_name: str = "m1", dimension: int = 1
+) -> MeshTagsInfo:
+    return MeshTagsInfo(
+        name=name,
+        tags=MagicMock(),
+        mesh_name=mesh_name,
+        dimension=dimension,
+        unique_tags=[1, 2, 3],
+    )
+
+
+def _make_entity_map_info(
+    name: str = "emap0",
+    parent_mesh: str = "m1",
+    child_mesh: str = "m1_sub",
+    dimension: int = 2,
+) -> EntityMapInfo:
+    return EntityMapInfo(
+        name=name,
+        entity_map=MagicMock(),
+        parent_mesh=parent_mesh,
+        child_mesh=child_mesh,
+        dimension=dimension,
+    )
+
+
+class TestPhase13GetMeshTags:
+    """Tests for SessionState.get_mesh_tags accessor."""
+
+    def test_get_mesh_tags_not_found(self):
+        session = SessionState()
+        with pytest.raises(Exception) as exc_info:
+            session.get_mesh_tags("nonexistent")
+        assert "not found" in str(exc_info.value).lower()
+
+    def test_get_mesh_tags_postcondition_name_mismatch(self):
+        """Debug postcondition fires if MeshTagsInfo.name != registry key."""
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        tags_info = _make_mesh_tags_info("wrong_name", mesh_name="m1")
+        session.mesh_tags["tags0"] = tags_info  # key != tags_info.name
+
+        with pytest.raises(Exception) as exc_info:
+            session.get_mesh_tags("tags0")
+        assert "name" in str(exc_info.value).lower() or "mismatch" in str(exc_info.value).lower()
+
+    def test_get_mesh_tags_postcondition_dangling_mesh(self):
+        """Debug postcondition fires if mesh_name not in meshes."""
+        session = SessionState()
+        # No mesh registered, but tags reference "m1"
+        tags_info = _make_mesh_tags_info("tags0", mesh_name="m1")
+        session.mesh_tags["tags0"] = tags_info
+
+        with pytest.raises(Exception) as exc_info:
+            session.get_mesh_tags("tags0")
+        assert "mesh" in str(exc_info.value).lower()
+
+
+class TestPhase13GetEntityMap:
+    """Tests for SessionState.get_entity_map accessor."""
+
+    def test_get_entity_map_not_found(self):
+        session = SessionState()
+        with pytest.raises(Exception) as exc_info:
+            session.get_entity_map("nonexistent")
+        assert "not found" in str(exc_info.value).lower()
+
+    def test_get_entity_map_postcondition_name_mismatch(self):
+        """Debug postcondition fires if EntityMapInfo.name != registry key."""
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1_sub"] = _make_mesh_info("m1_sub")
+        emap_info = _make_entity_map_info("wrong_name", parent_mesh="m1", child_mesh="m1_sub")
+        session.entity_maps["emap0"] = emap_info  # key != emap_info.name
+
+        with pytest.raises(Exception) as exc_info:
+            session.get_entity_map("emap0")
+        assert "name" in str(exc_info.value).lower() or "mismatch" in str(exc_info.value).lower()
+
+    def test_get_entity_map_postcondition_dangling_parent(self):
+        """Debug postcondition fires if parent_mesh not in meshes."""
+        session = SessionState()
+        # child mesh exists but parent does not
+        session.meshes["m1_sub"] = _make_mesh_info("m1_sub")
+        emap_info = _make_entity_map_info("emap0", parent_mesh="m1", child_mesh="m1_sub")
+        session.entity_maps["emap0"] = emap_info
+
+        with pytest.raises(Exception) as exc_info:
+            session.get_entity_map("emap0")
+        assert "parent" in str(exc_info.value).lower() or "mesh" in str(exc_info.value).lower()
+
+
+class TestPhase13GetLastSolution:
+    """Tests for SessionState.get_last_solution accessor."""
+
+    def test_get_last_solution_empty(self):
+        session = SessionState()
+        with pytest.raises(Exception) as exc_info:
+            session.get_last_solution()
+        assert "no solutions" in str(exc_info.value).lower()
+
+    def test_get_last_solution_returns_latest(self):
+        """Returns the most recently added solution."""
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.solutions["sol1"] = _make_solution_info("sol1", "V")
+        session.solutions["sol2"] = _make_solution_info("sol2", "V")
+
+        result = session.get_last_solution()
+        assert result.name == "sol2"
+
+    def test_get_last_solution_postcondition_dangling_space(self):
+        """Debug postcondition fires if space_name not in function_spaces."""
+        session = SessionState()
+        # Add solution referencing space "V" without registering the space
+        sol = _make_solution_info("u_h", "V")
+        session.solutions["u_h"] = sol
+
+        with pytest.raises(Exception) as exc_info:
+            session.get_last_solution()
+        assert "space" in str(exc_info.value).lower()

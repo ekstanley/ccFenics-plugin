@@ -84,21 +84,11 @@ async def compute_error(
 
     # Find the computed solution
     if function_name is not None:
-        if function_name not in session.functions:
-            raise FunctionNotFoundError(
-                f"Function '{function_name}' not found.",
-                suggestion="Check available functions with get_session_state.",
-            )
-        uh = session.functions[function_name].function
-        space_name = session.functions[function_name].space_name
+        fn_info = session.get_function(function_name)
+        uh = fn_info.function
+        space_name = fn_info.space_name
     else:
-        # Use the most recently stored solution
-        if not session.solutions:
-            raise DOLFINxAPIError(
-                "No solutions available. Run solve first.",
-                suggestion="Use the solve tool to compute a solution.",
-            )
-        last_sol = list(session.solutions.values())[-1]
+        last_sol = session.get_last_solution()
         uh = last_sol.function
         space_name = last_sol.space_name
 
@@ -144,7 +134,7 @@ async def compute_error(
     return {
         "norm_type": norm_type.upper(),
         "error_value": error_val,
-        "function_name": function_name or list(session.solutions.keys())[-1],
+        "function_name": function_name or session.get_last_solution().name,
     }
 
 
@@ -263,21 +253,9 @@ async def evaluate_solution(
 
     # Find the function to evaluate
     if function_name is not None:
-        if function_name not in session.functions:
-            raise FunctionNotFoundError(
-                f"Function '{function_name}' not found.",
-                suggestion="Check available functions with get_session_state.",
-            )
-        uh = session.functions[function_name].function
+        uh = session.get_function(function_name).function
     else:
-        # Use the most recently stored solution
-        if not session.solutions:
-            raise DOLFINxAPIError(
-                "No solutions available. Run solve first.",
-                suggestion="Use the solve tool to compute a solution.",
-            )
-        last_sol = list(session.solutions.values())[-1]
-        uh = last_sol.function
+        uh = session.get_last_solution().function
 
     mesh = uh.function_space.mesh
 
@@ -331,7 +309,7 @@ async def evaluate_solution(
 
     logger.info("Evaluated solution at %d points", len(points))
     return {
-        "function_name": function_name or list(session.solutions.keys())[-1],
+        "function_name": function_name or session.get_last_solution().name,
         "num_points": len(points),
         "evaluations": results,
     }
@@ -433,21 +411,9 @@ async def query_point_values(
 
     # Find the function to evaluate
     if function_name is not None:
-        if function_name not in session.functions:
-            raise FunctionNotFoundError(
-                f"Function '{function_name}' not found.",
-                suggestion="Check available functions with get_session_state.",
-            )
-        uh = session.functions[function_name].function
+        uh = session.get_function(function_name).function
     else:
-        # Use the most recently stored solution
-        if not session.solutions:
-            raise DOLFINxAPIError(
-                "No solutions available. Run solve first.",
-                suggestion="Use the solve tool to compute a solution.",
-            )
-        last_sol = list(session.solutions.values())[-1]
-        uh = last_sol.function
+        uh = session.get_last_solution().function
 
     mesh = uh.function_space.mesh
 
@@ -503,7 +469,7 @@ async def query_point_values(
 
     logger.info("Queried solution at %d points (tolerance=%.2e)", len(points), tolerance)
     return {
-        "function_name": function_name or list(session.solutions.keys())[-1],
+        "function_name": function_name or session.get_last_solution().name,
         "num_points": len(points),
         "tolerance": tolerance,
         "queries": results,
@@ -537,21 +503,9 @@ async def plot_solution(
 
     # Find the function to plot
     if function_name is not None:
-        if function_name not in session.functions:
-            raise FunctionNotFoundError(
-                f"Function '{function_name}' not found.",
-                suggestion="Check available functions with get_session_state.",
-            )
-        uh = session.functions[function_name].function
+        uh = session.get_function(function_name).function
     else:
-        # Use the most recently stored solution
-        if not session.solutions:
-            raise DOLFINxAPIError(
-                "No solutions available. Run solve first.",
-                suggestion="Use the solve tool to compute a solution.",
-            )
-        last_sol = list(session.solutions.values())[-1]
-        uh = last_sol.function
+        uh = session.get_last_solution().function
 
     V = uh.function_space
 

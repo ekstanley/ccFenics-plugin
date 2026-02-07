@@ -448,6 +448,66 @@ class SessionState:
                 )
         return result
 
+    def get_mesh_tags(self, name: str) -> MeshTagsInfo:
+        """Return named mesh tags, or raise if not found."""
+        if name not in self.mesh_tags:
+            available = list(self.mesh_tags.keys())
+            raise DOLFINxAPIError(
+                f"MeshTags '{name}' not found. Available: {available}",
+                suggestion="Check available tags with get_session_state.",
+            )
+        result = self.mesh_tags[name]
+        if __debug__:
+            if result.name != name:
+                raise PostconditionError(
+                    f"get_mesh_tags(): MeshTagsInfo.name '{result.name}' != registry key '{name}'"
+                )
+            if result.mesh_name not in self.meshes:
+                raise PostconditionError(
+                    f"get_mesh_tags(): mesh '{result.mesh_name}' not in meshes registry"
+                )
+        return result
+
+    def get_entity_map(self, name: str) -> EntityMapInfo:
+        """Return named entity map, or raise if not found."""
+        if name not in self.entity_maps:
+            available = list(self.entity_maps.keys())
+            raise DOLFINxAPIError(
+                f"EntityMap '{name}' not found. Available: {available}",
+                suggestion="Check available entity maps with get_session_state.",
+            )
+        result = self.entity_maps[name]
+        if __debug__:
+            if result.name != name:
+                raise PostconditionError(
+                    f"get_entity_map(): EntityMapInfo.name '{result.name}' != registry key '{name}'"
+                )
+            if result.parent_mesh not in self.meshes:
+                raise PostconditionError(
+                    f"get_entity_map(): parent_mesh '{result.parent_mesh}' not in meshes registry"
+                )
+            if result.child_mesh not in self.meshes:
+                raise PostconditionError(
+                    f"get_entity_map(): child_mesh '{result.child_mesh}' not in meshes registry"
+                )
+        return result
+
+    def get_last_solution(self) -> SolutionInfo:
+        """Return the most recently stored solution, or raise if none exist."""
+        if not self.solutions:
+            raise DOLFINxAPIError(
+                "No solutions available.",
+                suggestion="Run solve() or solve_time_dependent() first.",
+            )
+        name = list(self.solutions.keys())[-1]
+        result = self.solutions[name]
+        if __debug__:
+            if result.space_name not in self.function_spaces:
+                raise PostconditionError(
+                    f"get_last_solution(): space '{result.space_name}' not in function_spaces registry"
+                )
+        return result
+
     # --- Cascade deletion ---
 
     def remove_mesh(self, name: str) -> None:

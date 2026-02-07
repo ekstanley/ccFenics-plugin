@@ -651,14 +651,7 @@ async def create_submesh(
             suggestion=f"Use a different name or remove '{name}' first.",
         )
 
-    if tags_name not in session.mesh_tags:
-        available = list(session.mesh_tags.keys())
-        raise DOLFINxAPIError(
-            f"MeshTags '{tags_name}' not found.",
-            suggestion=f"Available tags: {available}",
-        )
-
-    tags_info = session.mesh_tags[tags_name]
+    tags_info = session.get_mesh_tags(tags_name)
     mesh_name = parent_mesh or tags_info.mesh_name
     mesh_info = session.get_mesh(mesh_name)
     mesh = mesh_info.mesh
@@ -842,14 +835,7 @@ async def manage_mesh_tags(
 
     elif action == "query":
         query_name = tags_name or name
-        if query_name not in session.mesh_tags:
-            available = list(session.mesh_tags.keys())
-            raise DOLFINxAPIError(
-                f"MeshTags '{query_name}' not found.",
-                suggestion=f"Available tags: {available}",
-            )
-
-        tags_info = session.mesh_tags[query_name]
+        tags_info = session.get_mesh_tags(query_name)
         tags = tags_info.tags
 
         # Count occurrences of each tag

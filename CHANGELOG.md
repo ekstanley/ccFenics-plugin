@@ -6,6 +6,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.1.12] - 2026-02-06
+
+### Changed
+
+#### Design-by-Contract Phase 13: Accessor Completion
+- **3 new typed accessors (session.py)**: `get_mesh_tags`, `get_entity_map`, `get_last_solution`
+  complete the accessor family (now 9 total). Each has debug postconditions verifying
+  name==key and parent references exist in registries
+- **Replaced direct dict reads across 3 tool files**:
+  - `mesh.py`: 2 `session.mesh_tags[name]` reads replaced with `session.get_mesh_tags(name)`
+  - `postprocess.py`: 4 `session.functions[name]` reads replaced with `session.get_function(name)`,
+    4 `list(session.solutions.values())[-1]` replaced with `session.get_last_solution()`,
+    3 `list(session.solutions.keys())[-1]` replaced with `session.get_last_solution().name`
+  - `solver.py`: 1 `list(session.solutions.keys())[-1]` + `session.get_solution()` replaced with
+    `session.get_last_solution()`
+
+### Testing
+- 9 new contract tests (89 contract tests total, 127 local + 13 Docker = 140 total)
+- Phase 13: get_mesh_tags not_found/name_mismatch/dangling_mesh (3),
+  get_entity_map not_found/name_mismatch/dangling_parent (3),
+  get_last_solution empty/returns_latest/dangling_space (3)
+
+---
+
 ## [0.1.11] - 2026-02-06
 
 ### Fixed
@@ -377,4 +401,10 @@ USE:  get_form("linear")     solve                        Replaces manual check
 USE:  get_form(bi/lin)       solve_time_dependent         Replaces manual check
 USE:  get_solution(name)     get_solver_diagnostics       Replaces direct access
 POST: interpolation finite   interpolate (3 paths)        PostconditionError
+POST: name == registry key   get_mesh_tags                PostconditionError (debug)
+POST: mesh_name in meshes    get_mesh_tags                PostconditionError (debug)
+POST: name == registry key   get_entity_map               PostconditionError (debug)
+POST: parent/child in meshes get_entity_map               PostconditionError (debug)
+POST: space in fn_spaces     get_last_solution            PostconditionError (debug)
+USE:  get_last_solution()    compute_error et al.         Replaces list()[-1]
 ```
