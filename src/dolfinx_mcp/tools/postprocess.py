@@ -220,6 +220,13 @@ async def export_solution(
 
     file_size = os.path.getsize(filepath) if os.path.exists(filepath) else 0
 
+    # Postcondition: exported file must be non-empty
+    if file_size <= 0:
+        raise PostconditionError(
+            f"Export produced empty file at '{filepath}'.",
+            suggestion="Check that functions contain data and output path is writable.",
+        )
+
     logger.info("Exported %d functions to %s (%s)", len(funcs_to_export), filepath, fmt)
     return {
         "file_path": filepath,
@@ -541,6 +548,13 @@ async def plot_solution(
         output_path = output_file or "/workspace/plot.png"
         plotter.screenshot(output_path)
         plotter.close()
+
+        # Postcondition: plot file must exist after rendering
+        if not os.path.exists(output_path):
+            raise PostconditionError(
+                f"Plot file not created at '{output_path}'.",
+                suggestion="Check output directory exists and is writable.",
+            )
 
         file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
 

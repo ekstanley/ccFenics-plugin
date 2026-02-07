@@ -289,6 +289,12 @@ async def create_discrete_operator(
     rows, cols = operator.getSize()
     nnz = operator.getInfo()["nz_used"]
 
+    # Postcondition: operator matrix must have positive dimensions
+    if rows <= 0 or cols <= 0:
+        raise PostconditionError(
+            f"Discrete operator has invalid dimensions: {rows}x{cols}; expected both > 0."
+        )
+
     # Store in session (using ufl_symbols dict with prefix for now)
     operator_key = f"_operator_{name}"
     session.ufl_symbols[operator_key] = operator

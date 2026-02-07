@@ -19,6 +19,7 @@ from ..errors import (
     DOLFINxMCPError,
     DuplicateNameError,
     InvalidUFLExpressionError,
+    PostconditionError,
     PreconditionError,
     handle_tool_errors,
 )
@@ -194,6 +195,13 @@ async def define_variational_form(
             f"Failed to compile linear form: {exc}",
             suggestion="Check that the linear form involves v (test) but not u (trial).",
         ) from exc
+
+    # Postcondition: compiled forms must not be None
+    if a_compiled is None or L_compiled is None:
+        raise PostconditionError(
+            "Form compilation returned None.",
+            suggestion="Check UFL expressions produce valid forms.",
+        )
 
     # Store forms
     session.forms["bilinear"] = FormInfo(
@@ -423,6 +431,13 @@ async def set_material_properties(
             f"Failed to interpolate material expression '{value}': {exc}",
             suggestion="Check expression syntax. Use x[0], x[1] for coords, pi for constants.",
         ) from exc
+
+    # Postcondition: interpolated material property must be finite
+    if not np.isfinite(func.x.array).all():
+        raise PostconditionError(
+            f"Material property '{name}' contains NaN/Inf after interpolation.",
+            suggestion="Check expression produces finite values over the domain.",
+        )
 
     session.ufl_symbols[name] = func
     session.functions[name] = FunctionInfo(

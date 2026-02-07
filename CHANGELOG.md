@@ -6,6 +6,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.2.1] - 2026-02-06
+
+### Added
+
+#### Design-by-Contract Phase 17: Postcondition Completion
+- **14 new postconditions** added to tools that compute/return values without
+  validity checks, bringing total PostconditionError raises from 16 to 30
+- **14 new tests** in `TestPhase17Postconditions` verifying each postcondition
+  fires under violation conditions
+- **Correspondence table**: 111 entries (was 97)
+- **Test summary**: 155 collected (153 passed, 2 skipped)
+
+**Tools with new postconditions:**
+- `create_unit_square`: num_cells > 0 and num_vertices > 0
+- `create_mesh`: num_cells > 0 and num_vertices > 0
+- `create_custom_mesh`: num_cells > 0 and num_vertices > 0
+- `get_mesh_info`: bounding box coordinates are finite
+- `mark_boundaries`: at least one facet tagged
+- `create_submesh`: submesh cells <= parent cells
+- `manage_mesh_tags` (create): at least one entity tagged
+- `create_function_space`: num_dofs > 0
+- `create_mixed_space`: num_dofs > 0
+- `create_discrete_operator`: matrix dimensions > 0
+- `define_variational_form`: compiled forms are not None
+- `set_material_properties`: interpolated values are finite
+- `export_solution`: file size > 0
+- `plot_solution`: output file exists
+
+---
+
 ## [0.2.0] - 2026-02-06
 
 ### Documentation
@@ -26,32 +56,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 | session_mgmt | run_custom_code | 1 | - | 1 |
 | session_mgmt | assemble | 1 | 1 | - |
 | session_mgmt | remove_object | 2 | 1 | 1 |
-| mesh | create_unit_square | 3 | - | 1 |
-| mesh | get_mesh_info | - | - | - |
-| mesh | create_mesh | 4 | - | 1 |
-| mesh | mark_boundaries | 3 | - | 1 |
+| mesh | create_unit_square | 3 | 1 | 1 |
+| mesh | get_mesh_info | - | 1 | - |
+| mesh | create_mesh | 4 | 1 | 1 |
+| mesh | mark_boundaries | 3 | 1 | 1 |
 | mesh | refine_mesh | - | 1 | 1 |
-| mesh | create_custom_mesh | 1 | 1 | 1 |
-| mesh | create_submesh | 2 | - | 1 |
-| mesh | manage_mesh_tags | 1 | - | 1 |
+| mesh | create_custom_mesh | 1 | 2 | 1 |
+| mesh | create_submesh | 2 | 1 | 1 |
+| mesh | manage_mesh_tags | 1 | 1 | 1 |
 | mesh | compute_mesh_quality | 1 | 2 | 1 |
-| spaces | create_function_space | 1 | - | 1 |
-| spaces | create_mixed_space | 1 | - | 1 |
+| spaces | create_function_space | 1 | 1 | 1 |
+| spaces | create_mixed_space | 1 | 1 | 1 |
 | interpolation | interpolate | - | 1 | 1 |
-| interpolation | create_discrete_operator | 1 | - | 1 |
+| interpolation | create_discrete_operator | 1 | 1 | 1 |
 | interpolation | project | 3 | 2 | 1 |
-| problem | set_material_properties | 1 | - | 1 |
-| problem | define_variational_form | 2 | - | 1 |
+| problem | set_material_properties | 1 | 1 | 1 |
+| problem | define_variational_form | 2 | 1 | 1 |
 | problem | apply_boundary_condition | 1 | - | 1 |
 | solver | solve | 1 | 2 | 1 |
 | solver | solve_time_dependent | 3 | 1 | 1 |
 | solver | get_solver_diagnostics | - | 1 | - |
 | postprocess | compute_error | 2 | 2 | - |
-| postprocess | export_solution | 1 | - | - |
+| postprocess | export_solution | 1 | 1 | - |
 | postprocess | evaluate_solution | 1 | 1 | - |
 | postprocess | compute_functionals | 1 | 1 | - |
 | postprocess | query_point_values | 2 | 1 | - |
-| postprocess | plot_solution | 1 | - | - |
+| postprocess | plot_solution | 1 | 1 | - |
 
 ---
 
@@ -509,4 +539,18 @@ PRE: name non-empty          project                     PreconditionError
 POST: result finite          project                     PostconditionError
 POST: l2_norm >= 0           project                     PostconditionError
 INV: check after project     project                     if __debug__
+POST: num_cells > 0          create_unit_square           PostconditionError
+POST: num_cells > 0          create_mesh                  PostconditionError
+POST: num_cells > 0          create_custom_mesh           PostconditionError
+POST: bbox finite             get_mesh_info                PostconditionError
+POST: unique_tags non-empty   mark_boundaries              PostconditionError
+POST: sub <= parent cells     create_submesh               PostconditionError
+POST: unique_tags non-empty   manage_mesh_tags (create)    PostconditionError
+POST: num_dofs > 0            create_function_space        PostconditionError
+POST: num_dofs > 0            create_mixed_space           PostconditionError
+POST: rows > 0, cols > 0     create_discrete_operator     PostconditionError
+POST: form not None           define_variational_form      PostconditionError
+POST: material finite         set_material_properties      PostconditionError
+POST: file_size > 0           export_solution              PostconditionError
+POST: file exists             plot_solution                PostconditionError
 ```

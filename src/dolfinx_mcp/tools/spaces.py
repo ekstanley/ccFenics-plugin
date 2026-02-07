@@ -8,7 +8,7 @@ from typing import Any
 from mcp.server.fastmcp import Context
 
 from .._app import mcp
-from ..errors import DOLFINxAPIError, DOLFINxMCPError, DuplicateNameError, PreconditionError, handle_tool_errors
+from ..errors import DOLFINxAPIError, DOLFINxMCPError, DuplicateNameError, PostconditionError, PreconditionError, handle_tool_errors
 from ..session import FunctionSpaceInfo, SessionState
 
 logger = logging.getLogger(__name__)
@@ -75,6 +75,12 @@ async def create_function_space(
         ) from exc
 
     num_dofs = V.dofmap.index_map.size_local * V.dofmap.index_map_bs
+
+    # Postcondition: function space must have DOFs
+    if num_dofs <= 0:
+        raise PostconditionError(
+            f"Function space created with {num_dofs} DOFs; expected > 0."
+        )
 
     fs_info = FunctionSpaceInfo(
         name=name,
@@ -159,6 +165,12 @@ async def create_mixed_space(
         ) from exc
 
     num_dofs = W.dofmap.index_map.size_local * W.dofmap.index_map_bs
+
+    # Postcondition: mixed space must have DOFs
+    if num_dofs <= 0:
+        raise PostconditionError(
+            f"Mixed function space created with {num_dofs} DOFs; expected > 0."
+        )
 
     # Calculate max degree from subspaces
     max_degree = max(info.element_degree for info in subspace_infos)

@@ -86,6 +86,13 @@ async def create_unit_square(
         tdim=topology.dim,
     )
 
+    # Postcondition: mesh must have cells and vertices
+    if info.num_cells <= 0 or info.num_vertices <= 0:
+        raise PostconditionError(
+            f"Mesh creation produced {info.num_cells} cells and {info.num_vertices} vertices; "
+            "expected both > 0."
+        )
+
     session.meshes[name] = info
     session.active_mesh = name
 
@@ -119,6 +126,13 @@ async def get_mesh_info(
     coords = mesh.geometry.x
     bbox_min = coords.min(axis=0).tolist()
     bbox_max = coords.max(axis=0).tolist()
+
+    # Postcondition: bounding box coordinates must be finite
+    if not np.isfinite(coords).all():
+        raise PostconditionError(
+            "Bounding box contains NaN/Inf values.",
+            suggestion="Check mesh geometry for degenerate elements.",
+        )
 
     result = info.summary()
     result["bounding_box"] = {"min": bbox_min, "max": bbox_max}
@@ -281,6 +295,13 @@ async def create_mesh(
         tdim=topology.dim,
     )
 
+    # Postcondition: mesh must have cells and vertices
+    if info.num_cells <= 0 or info.num_vertices <= 0:
+        raise PostconditionError(
+            f"Mesh creation produced {info.num_cells} cells and {info.num_vertices} vertices; "
+            "expected both > 0."
+        )
+
     session.meshes[name] = info
     session.active_mesh = name
 
@@ -403,6 +424,13 @@ async def mark_boundaries(
         unique_tags=[int(t) for t in np.unique(tag_values)],
     )
     session.mesh_tags[name] = tags_info
+
+    # Postcondition: boundary marking must produce at least one tag
+    if not tags_info.unique_tags:
+        raise PostconditionError(
+            "Boundary marking produced no tagged facets.",
+            suggestion="Check boundary conditions match the mesh geometry.",
+        )
 
     # Count tags
     tag_counts = {}
@@ -574,6 +602,13 @@ async def create_custom_mesh(
         tdim=topology.dim,
     )
 
+    # Postcondition: mesh must have cells and vertices
+    if info.num_cells <= 0 or info.num_vertices <= 0:
+        raise PostconditionError(
+            f"Mesh creation produced {info.num_cells} cells and {info.num_vertices} vertices; "
+            "expected both > 0."
+        )
+
     session.meshes[name] = info
     session.active_mesh = name
 
@@ -689,6 +724,12 @@ async def create_submesh(
         gdim=submesh.geometry.dim,
         tdim=topology.dim,
     )
+
+    # Postcondition: submesh cannot have more cells than parent
+    if submesh_info.num_cells > mesh_info.num_cells:
+        raise PostconditionError(
+            f"Submesh has {submesh_info.num_cells} cells, exceeding parent's {mesh_info.num_cells}."
+        )
 
     session.meshes[name] = submesh_info
     session.active_mesh = name
@@ -814,6 +855,13 @@ async def manage_mesh_tags(
             unique_tags=[int(t) for t in unique_tags],
         )
         session.mesh_tags[name] = tags_info
+
+        # Postcondition: tag creation must produce at least one tag
+        if not tags_info.unique_tags:
+            raise PostconditionError(
+                "Mesh tag creation produced no tagged entities.",
+                suggestion="Check entity indices and tag values are valid.",
+            )
 
         # Count tags
         tag_counts = {}

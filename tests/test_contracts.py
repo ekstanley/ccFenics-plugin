@@ -1552,3 +1552,586 @@ class TestPhase14Project:
             )
 
         assert result["error"] == "POSTCONDITION_VIOLATED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 17: Postcondition completion tests (14 tests)
+# ---------------------------------------------------------------------------
+
+
+def _mock_mesh_with_zero_cells():
+    """Create a mock DOLFINx mesh object that reports 0 cells."""
+    mock_index_map_cells = MagicMock()
+    mock_index_map_cells.size_local = 0
+    mock_index_map_verts = MagicMock()
+    mock_index_map_verts.size_local = 0
+
+    mock_topology = MagicMock()
+    mock_topology.dim = 2
+    mock_topology.index_map = (
+        lambda d: mock_index_map_cells if d == 2 else mock_index_map_verts
+    )
+
+    mock_mesh = MagicMock()
+    mock_mesh.topology = mock_topology
+    mock_mesh.geometry.dim = 2
+    return mock_mesh
+
+
+class TestPhase17Postconditions:
+    """Phase 17: Verify all 14 new postconditions fire correctly."""
+
+    # -- Mesh creation postconditions (3 tools, same check pattern) --
+
+    @pytest.mark.asyncio
+    async def test_create_unit_square_postcondition_zero_cells(self):
+        """Postcondition fires when create_unit_square produces 0 cells."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import create_unit_square
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        mock_mesh = _mock_mesh_with_zero_cells()
+
+        mock_dolfinx_mesh = MagicMock()
+        mock_dolfinx_mesh.CellType.triangle = "triangle"
+        mock_dolfinx_mesh.create_unit_square.return_value = mock_mesh
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.mesh = mock_dolfinx_mesh
+        mock_mpi = MagicMock()
+
+        with patch.object(MeshInfo, "__post_init__", lambda self: None):
+            with patch.dict(sys.modules, {
+                "mpi4py": mock_mpi,
+                "mpi4py.MPI": mock_mpi.MPI,
+                "dolfinx": mock_dolfinx,
+                "dolfinx.mesh": mock_dolfinx_mesh,
+            }):
+                result = await create_unit_square(name="m", nx=2, ny=2, ctx=ctx)
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "cells" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_create_mesh_postcondition_zero_cells(self):
+        """Postcondition fires when create_mesh produces 0 cells."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import create_mesh
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        mock_mesh = _mock_mesh_with_zero_cells()
+
+        mock_dolfinx_mesh = MagicMock()
+        mock_dolfinx_mesh.CellType.triangle = "triangle"
+        mock_dolfinx_mesh.create_unit_square.return_value = mock_mesh
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.mesh = mock_dolfinx_mesh
+        mock_mpi = MagicMock()
+
+        with patch.object(MeshInfo, "__post_init__", lambda self: None):
+            with patch.dict(sys.modules, {
+                "mpi4py": mock_mpi,
+                "mpi4py.MPI": mock_mpi.MPI,
+                "dolfinx": mock_dolfinx,
+                "dolfinx.mesh": mock_dolfinx_mesh,
+            }):
+                result = await create_mesh(
+                    name="m", shape="unit_square", nx=2, ny=2, ctx=ctx,
+                )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "cells" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_create_custom_mesh_postcondition_zero_cells(self):
+        """Postcondition fires when create_custom_mesh (Gmsh import) produces 0 cells."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import create_custom_mesh
+
+        session = SessionState()
+        ctx = _mock_ctx(session)
+        mock_mesh = _mock_mesh_with_zero_cells()
+        mock_mesh.topology.cell_type = "unmapped_type"
+
+        mock_dolfinx_mesh = MagicMock()
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.mesh = mock_dolfinx_mesh
+
+        mock_mesh_data = MagicMock()
+        mock_mesh_data.mesh = mock_mesh
+        mock_dolfinx.io.gmsh.model_to_mesh.return_value = mock_mesh_data
+
+        mock_mpi = MagicMock()
+        mock_gmsh = MagicMock()
+
+        with patch.object(MeshInfo, "__post_init__", lambda self: None):
+            with patch.dict(sys.modules, {
+                "mpi4py": mock_mpi,
+                "mpi4py.MPI": mock_mpi.MPI,
+                "dolfinx": mock_dolfinx,
+                "dolfinx.mesh": mock_dolfinx_mesh,
+                "dolfinx.io": mock_dolfinx.io,
+                "dolfinx.io.gmsh": mock_dolfinx.io.gmsh,
+                "gmsh": mock_gmsh,
+            }):
+                result = await create_custom_mesh(
+                    name="m", filename="test.msh", ctx=ctx,
+                )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "cells" in result["message"]
+
+    # -- get_mesh_info postcondition (NaN bounding box) --
+
+    @pytest.mark.asyncio
+    async def test_get_mesh_info_postcondition_nan_bbox(self):
+        """Postcondition fires when mesh geometry contains NaN."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import get_mesh_info
+
+        session = SessionState()
+        mesh_info = _make_mesh_info("m1")
+
+        # Mock coords so .min/.max work but isfinite fails
+        mock_min_result = MagicMock()
+        mock_min_result.tolist.return_value = [0.0, 0.0, 0.0]
+        mock_max_result = MagicMock()
+        mock_max_result.tolist.return_value = [1.0, 1.0, 0.0]
+        mock_coords = MagicMock()
+        mock_coords.min.return_value = mock_min_result
+        mock_coords.max.return_value = mock_max_result
+        mesh_info.mesh.geometry.x = mock_coords
+
+        session.meshes["m1"] = mesh_info
+        session.active_mesh = "m1"
+        ctx = _mock_ctx(session)
+
+        # Mock numpy so np.isfinite(coords).all() returns False
+        mock_np = MagicMock()
+        mock_finite_result = MagicMock()
+        mock_finite_result.all.return_value = False
+        mock_np.isfinite.return_value = mock_finite_result
+
+        with patch.dict(sys.modules, {"numpy": mock_np}):
+            result = await get_mesh_info(name="m1", ctx=ctx)
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "NaN" in result["message"] or "Inf" in result["message"]
+
+    # -- mark_boundaries postcondition (empty tags) --
+
+    @pytest.mark.asyncio
+    async def test_mark_boundaries_postcondition_no_tags(self):
+        """Postcondition fires when no boundary facets are tagged."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import mark_boundaries
+
+        session = SessionState()
+        mesh_info = _make_mesh_info("m1")
+        mesh_info.mesh.topology.dim = 2
+        session.meshes["m1"] = mesh_info
+        session.active_mesh = "m1"
+        ctx = _mock_ctx(session)
+
+        # Mock empty facet array from locate_entities_boundary
+        mock_empty_facets = MagicMock()
+        mock_empty_facets.__len__ = MagicMock(return_value=0)
+
+        mock_dolfinx_mesh = MagicMock()
+        mock_dolfinx_mesh.locate_entities_boundary.return_value = mock_empty_facets
+        mock_dolfinx_mesh.meshtags.return_value = MagicMock()
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.mesh = mock_dolfinx_mesh
+
+        # Mock numpy so np.unique(tag_values) returns empty iterable
+        mock_np = MagicMock()
+        mock_np.int32 = "int32"
+        mock_np.unique.return_value = []  # Empty -> unique_tags = []
+
+        with patch.dict(sys.modules, {
+            "numpy": mock_np,
+            "dolfinx": mock_dolfinx,
+            "dolfinx.mesh": mock_dolfinx_mesh,
+        }):
+            result = await mark_boundaries(
+                markers=[{"tag": 1, "condition": "x[0] < 1e-14"}],
+                name="tags",
+                ctx=ctx,
+            )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "no tagged facets" in result["message"]
+
+    # -- create_submesh postcondition (exceeds parent cells) --
+
+    @pytest.mark.asyncio
+    async def test_create_submesh_postcondition_exceeds_parent(self):
+        """Postcondition fires when submesh has more cells than parent."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import create_submesh
+
+        session = SessionState()
+        session.meshes["parent"] = _make_mesh_info("parent", num_cells=10)
+        session.active_mesh = "parent"
+
+        mock_tags = MagicMock()
+        mock_tags.values = MagicMock()
+        mock_tags.indices = MagicMock()
+        session.mesh_tags["ftags"] = MeshTagsInfo(
+            name="ftags", tags=mock_tags, mesh_name="parent",
+            dimension=1, unique_tags=[1],
+        )
+        ctx = _mock_ctx(session)
+
+        # Mock entities returned after np.isin filtering
+        mock_entities = MagicMock()
+        mock_entities.__len__ = MagicMock(return_value=3)
+
+        # Mock numpy: np.isin returns mask, indices[mask] returns entities
+        mock_np = MagicMock()
+        mock_np.isin.return_value = MagicMock()
+        mock_tags.indices.__getitem__ = MagicMock(return_value=mock_entities)
+
+        # Mock submesh: 20 cells > parent's 10
+        mock_sub_index_cells = MagicMock()
+        mock_sub_index_cells.size_local = 20
+        mock_sub_index_verts = MagicMock()
+        mock_sub_index_verts.size_local = 15
+
+        mock_sub_topology = MagicMock()
+        mock_sub_topology.dim = 2
+        mock_sub_topology.index_map = (
+            lambda d: mock_sub_index_cells if d == 2 else mock_sub_index_verts
+        )
+
+        mock_submesh = MagicMock()
+        mock_submesh.topology = mock_sub_topology
+        mock_submesh.geometry.dim = 2
+
+        mock_dolfinx_mesh = MagicMock()
+        mock_dolfinx_mesh.create_submesh.return_value = (
+            mock_submesh, MagicMock(),
+        )
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.mesh = mock_dolfinx_mesh
+
+        with patch.object(MeshInfo, "__post_init__", lambda self: None):
+            with patch.dict(sys.modules, {
+                "numpy": mock_np,
+                "dolfinx": mock_dolfinx,
+                "dolfinx.mesh": mock_dolfinx_mesh,
+            }):
+                result = await create_submesh(
+                    name="sub", tags_name="ftags", tag_values=[1], ctx=ctx,
+                )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "exceeding parent" in result["message"]
+
+    # -- manage_mesh_tags postcondition (empty tags on create) --
+
+    @pytest.mark.asyncio
+    async def test_manage_mesh_tags_postcondition_no_tags(self):
+        """Postcondition fires when tag creation produces no tagged entities."""
+        import sys
+
+        from dolfinx_mcp.tools.mesh import manage_mesh_tags
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        ctx = _mock_ctx(session)
+
+        mock_dolfinx_mesh = MagicMock()
+        mock_dolfinx_mesh.meshtags.return_value = MagicMock()
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.mesh = mock_dolfinx_mesh
+
+        # Mock numpy so np.unique(tag_values).tolist() returns []
+        mock_np = MagicMock()
+        mock_np.int32 = "int32"
+        mock_unique_result = MagicMock()
+        mock_unique_result.tolist.return_value = []
+        mock_np.unique.return_value = mock_unique_result
+
+        with patch.dict(sys.modules, {
+            "numpy": mock_np,
+            "dolfinx": mock_dolfinx,
+            "dolfinx.mesh": mock_dolfinx_mesh,
+        }):
+            result = await manage_mesh_tags(
+                name="tags", action="create", dimension=1,
+                values=[{"entities": [], "tag": 1}],
+                ctx=ctx,
+            )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "no tagged entities" in result["message"]
+
+    # -- Function space postconditions (2 tools) --
+
+    @pytest.mark.asyncio
+    async def test_create_function_space_postcondition_zero_dofs(self):
+        """Postcondition fires when function space has 0 DOFs."""
+        import sys
+
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        ctx = _mock_ctx(session)
+
+        mock_dofmap = MagicMock()
+        mock_dofmap.index_map.size_local = 0
+        mock_dofmap.index_map_bs = 1
+        mock_V = MagicMock()
+        mock_V.dofmap = mock_dofmap
+
+        mock_dolfinx_fem = MagicMock()
+        mock_dolfinx_fem.functionspace.return_value = mock_V
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.fem = mock_dolfinx_fem
+
+        with patch.object(FunctionSpaceInfo, "__post_init__", lambda self: None):
+            with patch.dict(sys.modules, {
+                "dolfinx": mock_dolfinx,
+                "dolfinx.fem": mock_dolfinx_fem,
+            }):
+                result = await create_function_space(
+                    name="V", degree=1, ctx=ctx,
+                )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "DOFs" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_create_mixed_space_postcondition_zero_dofs(self):
+        """Postcondition fires when mixed space has 0 DOFs."""
+        import sys
+
+        from dolfinx_mcp.tools.spaces import create_mixed_space
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        session.function_spaces["V1"] = _make_space_info("V1", "m1")
+        session.function_spaces["V2"] = _make_space_info("V2", "m1")
+        ctx = _mock_ctx(session)
+
+        mock_dofmap = MagicMock()
+        mock_dofmap.index_map.size_local = 0
+        mock_dofmap.index_map_bs = 1
+        mock_W = MagicMock()
+        mock_W.dofmap = mock_dofmap
+
+        mock_basix = MagicMock()
+        mock_dolfinx_fem = MagicMock()
+        mock_dolfinx_fem.functionspace.return_value = mock_W
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.fem = mock_dolfinx_fem
+
+        with patch.object(FunctionSpaceInfo, "__post_init__", lambda self: None):
+            with patch.dict(sys.modules, {
+                "basix": mock_basix,
+                "basix.ufl": mock_basix.ufl,
+                "dolfinx": mock_dolfinx,
+                "dolfinx.fem": mock_dolfinx_fem,
+            }):
+                result = await create_mixed_space(
+                    name="W", subspaces=["V1", "V2"], ctx=ctx,
+                )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "DOFs" in result["message"]
+
+    # -- create_discrete_operator postcondition (zero dimensions) --
+
+    @pytest.mark.asyncio
+    async def test_create_discrete_operator_postcondition_zero_dims(self):
+        """Postcondition fires when operator has 0x0 dimensions."""
+        import sys
+
+        from dolfinx_mcp.tools.interpolation import create_discrete_operator
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        session.function_spaces["V1"] = _make_space_info("V1", "m1")
+        session.function_spaces["V2"] = _make_space_info("V2", "m1")
+        ctx = _mock_ctx(session)
+
+        mock_operator = MagicMock()
+        mock_operator.getSize.return_value = (0, 0)
+
+        mock_dolfinx_fem = MagicMock()
+        mock_dolfinx_fem.discrete_gradient.return_value = mock_operator
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.fem = mock_dolfinx_fem
+
+        with patch.dict(sys.modules, {
+            "dolfinx": mock_dolfinx,
+            "dolfinx.fem": mock_dolfinx_fem,
+        }):
+            result = await create_discrete_operator(
+                operator_type="gradient",
+                source_space="V1",
+                target_space="V2",
+                ctx=ctx,
+            )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "dimensions" in result["message"]
+
+    # -- define_variational_form postcondition (None form) --
+
+    @pytest.mark.asyncio
+    async def test_define_variational_form_postcondition_none_form(self):
+        """Postcondition fires when form compilation returns None."""
+        import sys
+
+        from dolfinx_mcp.tools.problem import define_variational_form
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+        ctx = _mock_ctx(session)
+
+        mock_ufl = MagicMock()
+        mock_dolfinx_fem = MagicMock()
+        mock_dolfinx_fem.form.return_value = None
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.fem = mock_dolfinx_fem
+
+        with patch("dolfinx_mcp.tools.problem.build_namespace", return_value={}), \
+             patch("dolfinx_mcp.tools.problem.safe_evaluate", return_value=MagicMock()):
+            with patch.dict(sys.modules, {
+                "ufl": mock_ufl,
+                "dolfinx": mock_dolfinx,
+                "dolfinx.fem": mock_dolfinx_fem,
+            }):
+                result = await define_variational_form(
+                    bilinear="inner(grad(u), grad(v)) * dx",
+                    linear="f * v * dx",
+                    trial_space="V",
+                    ctx=ctx,
+                )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "None" in result["message"]
+
+    # -- set_material_properties postcondition (NaN after interpolation) --
+
+    @pytest.mark.asyncio
+    async def test_set_material_properties_postcondition_nan(self):
+        """Postcondition fires when interpolated material contains NaN."""
+        import sys
+
+        from dolfinx_mcp.tools.problem import set_material_properties
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+        ctx = _mock_ctx(session)
+
+        mock_isfinite_result = MagicMock()
+        mock_isfinite_result.all.return_value = False
+        mock_np = MagicMock()
+        mock_np.isfinite.return_value = mock_isfinite_result
+
+        mock_dolfinx_fem = MagicMock()
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.fem = mock_dolfinx_fem
+
+        with patch.dict(sys.modules, {
+            "numpy": mock_np,
+            "dolfinx": mock_dolfinx,
+            "dolfinx.fem": mock_dolfinx_fem,
+        }):
+            result = await set_material_properties(
+                name="kappa", value="sin(pi*x[0])",
+                function_space="V", ctx=ctx,
+            )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "NaN" in result["message"] or "Inf" in result["message"]
+
+    # -- export_solution postcondition (empty file) --
+
+    @pytest.mark.asyncio
+    async def test_export_solution_postcondition_empty_file(self):
+        """Postcondition fires when exported file is empty."""
+        import sys
+
+        from dolfinx_mcp.tools.postprocess import export_solution
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.solutions["u_h"] = _make_solution_info("u_h", "V")
+        ctx = _mock_ctx(session)
+
+        mock_dolfinx_io = MagicMock()
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.io = mock_dolfinx_io
+        mock_mpi = MagicMock()
+
+        with patch("os.path.exists", return_value=True), \
+             patch("os.path.getsize", return_value=0):
+            with patch.dict(sys.modules, {
+                "mpi4py": mock_mpi,
+                "mpi4py.MPI": mock_mpi.MPI,
+                "dolfinx": mock_dolfinx,
+                "dolfinx.io": mock_dolfinx_io,
+            }):
+                result = await export_solution(
+                    filename="test.xdmf", format="xdmf", ctx=ctx,
+                )
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "empty file" in result["message"]
+
+    # -- plot_solution postcondition (file not created) --
+
+    @pytest.mark.asyncio
+    async def test_plot_solution_postcondition_no_file(self):
+        """Postcondition fires when plot file is not created."""
+        import sys
+
+        from dolfinx_mcp.tools.postprocess import plot_solution
+
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.active_mesh = "m1"
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.solutions["u_h"] = _make_solution_info("u_h", "V")
+        ctx = _mock_ctx(session)
+
+        mock_pyvista = MagicMock()
+        mock_dolfinx_plot = MagicMock()
+        mock_dolfinx_plot.vtk_mesh.return_value = (
+            MagicMock(), MagicMock(), MagicMock(),
+        )
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.plot = mock_dolfinx_plot
+
+        with patch("os.path.exists", return_value=False):
+            with patch.dict(sys.modules, {
+                "pyvista": mock_pyvista,
+                "dolfinx": mock_dolfinx,
+                "dolfinx.plot": mock_dolfinx_plot,
+            }):
+                result = await plot_solution(ctx=ctx)
+
+        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert "not created" in result["message"]
