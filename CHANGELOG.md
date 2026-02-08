@@ -6,6 +6,60 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.4.2] - 2026-02-07
+
+### Added
+
+#### MCP Protocol Production Readiness Test Suite (Phase 30)
+
+**New artifact: `examples/production_readiness.py`**
+- Standalone script exercising all 31 MCP tools through the Docker container
+  via JSON-RPC stdio protocol (production-identical path)
+- 49 checks: 31+ positive-path postcondition validations + 9 negative-path
+  contract verifications across 12 test phases (P0-P11)
+- Diagnostic report with per-tool pass/fail, timing, and coverage stats
+- Serves as executable API documentation and production gate
+
+**Test phases:**
+- P0: Connectivity & discovery (list_tools, get_session_state)
+- P1: Mesh creation & quality (create_unit_square, get_mesh_info,
+  compute_mesh_quality, create_mesh)
+- P2: Boundary & tag operations (mark_boundaries, manage_mesh_tags,
+  refine_mesh, create_submesh)
+- P3: Function spaces (create_function_space, create_mixed_space)
+- P4: Material properties & interpolation (set_material_properties, interpolate)
+- P5: Problem definition & BCs (define_variational_form, apply_boundary_condition)
+- P6: Solver & diagnostics (solve, get_solver_diagnostics)
+- P7: Postprocessing (compute_error, evaluate_solution, query_point_values,
+  compute_functionals, export_solution, plot_solution)
+- P8: Advanced operations (reset_session, solve_time_dependent, assemble x3,
+  project, create_discrete_operator)
+- P9: Session management (get_session_state, run_custom_code, remove_object,
+  reset_session)
+- P10: Custom mesh via gmsh (run_custom_code + create_custom_mesh)
+- P11: Contract verification -- 9 negative-path tests validating
+  PRECONDITION_VIOLATED error codes
+
+**Protocol-level findings documented:**
+- `plot_solution` emits VTK stdout noise that corrupts stdio JSON-RPC stream;
+  workaround: validate via workspace volume mount
+- `evaluate_solution` / `query_point_values` return numpy `.tolist()` arrays;
+  client code must handle both list and scalar values
+
+**v0.4.2 metrics:**
+- Production readiness: 49/49 checks passed, 31/31 tools covered
+- Total execution time: ~2 seconds
+- Exit code 0 (PRODUCTION READY)
+
+**Files added (1):**
+- `examples/production_readiness.py`
+
+**Files modified (2):**
+- `pyproject.toml` (version 0.4.1 -> 0.4.2)
+- `CHANGELOG.md`
+
+---
+
 ## [0.4.1] - 2026-02-07
 
 ### Fixed
