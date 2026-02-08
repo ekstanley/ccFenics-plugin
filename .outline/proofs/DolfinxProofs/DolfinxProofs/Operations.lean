@@ -18,6 +18,8 @@ def freshState : SessionState where
   solutions       := []
   mesh_tags       := []
   entity_maps     := []
+  forms           := []
+  ufl_symbols     := []
   active_mesh     := none
 
 /-- Register a mesh. Sets active_mesh to the new name. -/
@@ -70,6 +72,8 @@ def removeMesh (s : SessionState) (name : String) : SessionState :=
     mesh_tags       := s.mesh_tags.filter  (fun (_, mn) => !decide (mn = name))
     entity_maps     := s.entity_maps.filter
                           (fun (_, pm, cm) => !decide (pm = name) && !decide (cm = name))
+    forms           := if depSpaceKeys == [] then s.forms else []
+    ufl_symbols     := if depSpaceKeys == [] then s.ufl_symbols else []
     active_mesh     := if s.active_mesh = some name then none else s.active_mesh }
 
 /-- Clear all state. -/

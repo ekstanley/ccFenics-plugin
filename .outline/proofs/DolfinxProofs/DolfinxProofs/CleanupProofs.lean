@@ -5,7 +5,7 @@ import DolfinxProofs.FreshState
 /-!
 # Cleanup Validity
 
-cleanup produces freshState, which is already proven valid.
+cleanup produces freshState, which is already proven valid (all 8 invariants).
 -/
 
 namespace DolfinxProofs

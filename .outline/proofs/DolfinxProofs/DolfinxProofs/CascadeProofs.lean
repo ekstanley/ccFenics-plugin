@@ -5,7 +5,7 @@ import DolfinxProofs.Basic
 /-!
 # Cascade Deletion Proofs
 
-Proves that removeSpaceDeps and removeMesh preserve all 7 invariants.
+Proves that removeSpaceDeps and removeMesh preserve all 8 invariants.
 removeMesh is the hardest proof in the project -- it requires showing
 that cascade deletion of a mesh and all its dependents maintains
 referential integrity.
@@ -69,15 +69,15 @@ private theorem key_survives_mesh_filter
 -- T9: removeSpaceDeps preserves invariants
 -- ========================================================================
 
-/-- Removing space dependents preserves all 7 invariants.
+/-- Removing space dependents preserves all 8 invariants.
     Only functions/bcs/solutions are modified (filtered).
-    function_spaces, meshes, etc. are unchanged. -/
+    function_spaces, meshes, forms, ufl_symbols, etc. are unchanged. -/
 theorem removeSpaceDeps_valid (s : SessionState) (spaceName : String)
     (h : valid s) : valid (removeSpaceDeps s spaceName) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8⟩ := h
   unfold valid removeSpaceDeps
   simp only
-  refine ⟨h1, h2, ?_, ?_, ?_, h6, h7⟩
+  refine ⟨h1, h2, ?_, ?_, ?_, h6, h7, h8⟩
   · -- INV-3: remaining functions still reference valid function_spaces
     intro k sn hmem
     exact h3 k sn (mem_of_filter_pair hmem)
@@ -92,15 +92,15 @@ theorem removeSpaceDeps_valid (s : SessionState) (spaceName : String)
 -- T10: removeMesh preserves invariants [MAIN THEOREM]
 -- ========================================================================
 
-/-- Cascade deletion of a mesh preserves all 7 referential integrity invariants.
+/-- Cascade deletion of a mesh preserves all 8 referential integrity invariants.
     This is the highest-value proof, verifying that session.py L514-573
     correctly maintains referential integrity. -/
 theorem removeMesh_valid (s : SessionState) (name : String)
     (h : valid s) : valid (removeMesh s name) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8⟩ := h
   unfold valid removeMesh
   simp only
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
 
   · -- INV-1: active_mesh
     intro m hm
@@ -164,5 +164,38 @@ theorem removeMesh_valid (s : SessionState) (name : String)
     have ⟨hpm_in, hcm_in⟩ := h7 k pm cm hmem_orig
     exact ⟨List.mem_filter.mpr ⟨hpm_in, by simp [hpm_ne]⟩,
            List.mem_filter.mpr ⟨hcm_in, by simp [hcm_ne]⟩⟩
+
+  · -- INV-8: forms non-empty -> function_spaces non-empty
+    -- If depSpaceKeys is non-empty: forms = [], so vacuously true
+    -- If depSpaceKeys is empty: forms = s.forms, function_spaces filtered
+    --   but no spaces removed, so original INV-8 applies
+    intro hforms
+    split at hforms
+    · -- depSpaceKeys == [] is true; forms = s.forms; hforms : s.forms ≠ []
+      rename_i hdep
+      intro h_empty
+      have hfs_ne := h8 hforms
+      -- s.function_spaces ≠ [], so destructure to get first element
+      cases hl : s.function_spaces with
+      | nil => exact hfs_ne hl
+      | cons hd tl =>
+        obtain ⟨k0, mn0⟩ := hd
+        have h_mem : (k0, mn0) ∈ s.function_spaces := by
+          rw [hl]; exact List.mem_cons_self _ _
+        by_cases hmn0 : mn0 = name
+        · -- mn0 = name: k0 would be in depSpaceKeys, but depSpaceKeys = []
+          have h_filt : (k0, mn0) ∈ s.function_spaces.filter (fun p => decide (p.2 = name)) :=
+            List.mem_filter.mpr ⟨h_mem, by simp [hmn0]⟩
+          have h_map : k0 ∈ (s.function_spaces.filter (fun p => decide (p.2 = name))).map Prod.fst :=
+            List.mem_map_of_mem Prod.fst h_filt
+          rw [eq_of_beq hdep] at h_map
+          exact absurd h_map (List.not_mem_nil _)
+        · -- mn0 ≠ name: (k0, mn0) survives filter, contradicting h_empty = []
+          have h_surv : (k0, mn0) ∈ s.function_spaces.filter (fun (_, mn) => !decide (mn = name)) :=
+            List.mem_filter.mpr ⟨h_mem, by simp [hmn0]⟩
+          rw [h_empty] at h_surv
+          exact absurd h_surv (List.not_mem_nil _)
+    · -- depSpaceKeys ≠ []: forms = [], so hforms : [] ≠ [] is absurd
+      exact absurd rfl hforms
 
 end DolfinxProofs

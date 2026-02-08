@@ -4,7 +4,7 @@ import DolfinxProofs.Operations
 /-!
 # Fresh State Validity
 
-The empty session state trivially satisfies all 7 invariants
+The empty session state trivially satisfies all 8 invariants
 because all registries are empty and active_mesh is none.
 -/
 

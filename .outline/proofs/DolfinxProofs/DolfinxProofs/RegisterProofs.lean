@@ -5,19 +5,19 @@ import DolfinxProofs.Basic
 /-!
 # Registration Preservation Theorems
 
-Each register operation preserves all 7 referential integrity invariants,
+Each register operation preserves all 8 referential integrity invariants,
 given the appropriate precondition (e.g., mesh_name must already exist).
 -/
 
 namespace DolfinxProofs
 
-/-- T2: Registering a mesh preserves all 7 invariants. -/
+/-- T2: Registering a mesh preserves all 8 invariants. -/
 theorem registerMesh_valid (s : SessionState) (name : String)
     (h : valid s) : valid (registerMesh s name) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8⟩ := h
   unfold valid registerMesh
   simp only
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · -- INV-1: active_mesh = some name, and name ∈ name :: meshes
     intro m hm
     simp at hm
@@ -39,15 +39,17 @@ theorem registerMesh_valid (s : SessionState) (name : String)
     intro k pm cm hmem
     have ⟨hp, hc⟩ := h7 k pm cm hmem
     exact ⟨List.mem_cons_of_mem name hp, List.mem_cons_of_mem name hc⟩
+  · -- INV-8: forms unchanged, function_spaces unchanged
+    exact h8
 
 /-- T3: Registering a function space preserves invariants. -/
 theorem registerFunctionSpace_valid (s : SessionState) (name : String) (meshName : String)
     (h : valid s) (hpre : meshName ∈ s.meshes) :
     valid (registerFunctionSpace s name meshName) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8⟩ := h
   unfold valid registerFunctionSpace
   simp only
-  refine ⟨h1, ?_, ?_, ?_, ?_, h6, h7⟩
+  refine ⟨h1, ?_, ?_, ?_, ?_, h6, h7, ?_⟩
   · -- INV-2: new entry (name, meshName) satisfies by hpre; old entries by h2
     intro k mn hmem
     simp at hmem
@@ -63,15 +65,18 @@ theorem registerFunctionSpace_valid (s : SessionState) (name : String) (meshName
   · -- INV-5: same monotonicity
     intro k sn hmem
     exact hasKey_cons _ _ (name, meshName) (h5 k sn hmem)
+  · -- INV-8: forms unchanged, function_spaces grows (cons is non-empty)
+    intro _
+    exact List.cons_ne_nil _ _
 
 /-- T4: Registering a function preserves invariants. -/
 theorem registerFunction_valid (s : SessionState) (name : String) (spaceName : String)
     (h : valid s) (hpre : hasKey s.function_spaces spaceName) :
     valid (registerFunction s name spaceName) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8⟩ := h
   unfold valid registerFunction
   simp only
-  refine ⟨h1, h2, ?_, h4, h5, h6, h7⟩
+  refine ⟨h1, h2, ?_, h4, h5, h6, h7, h8⟩
   intro k sn hmem
   simp at hmem
   rcases hmem with ⟨rfl, rfl⟩ | hmem
@@ -82,10 +87,10 @@ theorem registerFunction_valid (s : SessionState) (name : String) (spaceName : S
 theorem registerBC_valid (s : SessionState) (name : String) (spaceName : String)
     (h : valid s) (hpre : hasKey s.function_spaces spaceName) :
     valid (registerBC s name spaceName) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8⟩ := h
   unfold valid registerBC
   simp only
-  refine ⟨h1, h2, h3, ?_, h5, h6, h7⟩
+  refine ⟨h1, h2, h3, ?_, h5, h6, h7, h8⟩
   intro k sn hmem
   simp at hmem
   rcases hmem with ⟨rfl, rfl⟩ | hmem
@@ -96,10 +101,10 @@ theorem registerBC_valid (s : SessionState) (name : String) (spaceName : String)
 theorem registerSolution_valid (s : SessionState) (name : String) (spaceName : String)
     (h : valid s) (hpre : hasKey s.function_spaces spaceName) :
     valid (registerSolution s name spaceName) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8⟩ := h
   unfold valid registerSolution
   simp only
-  refine ⟨h1, h2, h3, h4, ?_, h6, h7⟩
+  refine ⟨h1, h2, h3, h4, ?_, h6, h7, h8⟩
   intro k sn hmem
   simp at hmem
   rcases hmem with ⟨rfl, rfl⟩ | hmem
@@ -110,10 +115,10 @@ theorem registerSolution_valid (s : SessionState) (name : String) (spaceName : S
 theorem registerMeshTags_valid (s : SessionState) (name : String) (meshName : String)
     (h : valid s) (hpre : meshName ∈ s.meshes) :
     valid (registerMeshTags s name meshName) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8⟩ := h
   unfold valid registerMeshTags
   simp only
-  refine ⟨h1, h2, h3, h4, h5, ?_, h7⟩
+  refine ⟨h1, h2, h3, h4, h5, ?_, h7, h8⟩
   intro k mn hmem
   simp at hmem
   rcases hmem with ⟨rfl, rfl⟩ | hmem
@@ -125,10 +130,10 @@ theorem registerEntityMap_valid (s : SessionState) (name : String)
     (parentMesh : String) (childMesh : String)
     (h : valid s) (hp : parentMesh ∈ s.meshes) (hc : childMesh ∈ s.meshes) :
     valid (registerEntityMap s name parentMesh childMesh) := by
-  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := h
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8⟩ := h
   unfold valid registerEntityMap
   simp only
-  refine ⟨h1, h2, h3, h4, h5, h6, ?_⟩
+  refine ⟨h1, h2, h3, h4, h5, h6, ?_, h8⟩
   intro k pm cm hmem
   simp at hmem
   rcases hmem with ⟨rfl, rfl, rfl⟩ | hmem

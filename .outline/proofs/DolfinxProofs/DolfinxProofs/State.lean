@@ -13,6 +13,8 @@ Correspondence to Python:
   solutions      : dict[str, SolutionInfo]       --> List (String x String) (key, space_name)
   mesh_tags      : dict[str, MeshTagsInfo]       --> List (String x String) (key, mesh_name)
   entity_maps    : dict[str, EntityMapInfo]      --> List (String x String x String) (key, parent, child)
+  forms          : list[str]                     --> List String
+  ufl_symbols    : list[str]                     --> List String
   active_mesh    : str | None                    --> Option String
 -/
 
@@ -26,6 +28,8 @@ structure SessionState where
   solutions       : List (String × String)
   mesh_tags       : List (String × String)
   entity_maps     : List (String × String × String)
+  forms           : List String
+  ufl_symbols     : List String
   active_mesh     : Option String
   deriving Repr
 
