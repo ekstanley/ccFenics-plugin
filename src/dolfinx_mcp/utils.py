@@ -5,8 +5,10 @@ Extracted from duplicated patterns across tool modules.
 
 from __future__ import annotations
 
+from typing import Any
 
-def compute_l2_norm(function) -> float:
+
+def compute_l2_norm(function: Any) -> float:
     """Compute L2 norm of a DOLFINx function via UFL integral.
 
     Args:

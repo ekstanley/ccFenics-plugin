@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from .._app import mcp
 
 
 @mcp.resource("dolfinx://capabilities")
-def get_capabilities() -> dict:
+def get_capabilities() -> dict[str, Any]:
     """Supported element families, formats, solvers, and features."""
     return {
         "element_families": [
@@ -51,7 +53,7 @@ def get_capabilities() -> dict:
 
 
 @mcp.resource("dolfinx://mesh/schema")
-def get_mesh_schema() -> dict:
+def get_mesh_schema() -> dict[str, Any]:
     """JSON schema describing mesh objects and their properties."""
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -127,7 +129,7 @@ def get_mesh_schema() -> dict:
 
 
 @mcp.resource("dolfinx://solution/schema")
-def get_solution_schema() -> dict:
+def get_solution_schema() -> dict[str, Any]:
     """JSON schema describing solution objects and their properties."""
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -204,7 +206,7 @@ def get_solution_schema() -> dict:
 
 
 @mcp.resource("dolfinx://tags/schema")
-def get_tags_schema() -> dict:
+def get_tags_schema() -> dict[str, Any]:
     """JSON schema describing mesh tags and region markers."""
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -261,7 +263,7 @@ def get_tags_schema() -> dict:
 
 
 @mcp.resource("dolfinx://log/info")
-def get_log_info() -> dict:
+def get_log_info() -> dict[str, Any]:
     """Logging configuration and level information."""
     return {
         "description": "DOLFINx MCP Server logging configuration",
@@ -296,7 +298,7 @@ def get_log_info() -> dict:
 
 
 @mcp.resource("dolfinx://api/reference")
-def get_api_reference() -> dict:
+def get_api_reference() -> dict[str, Any]:
     """Quick reference guide for all available MCP tools."""
     return {
         "categories": {
