@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.5.1] - 2026-02-07
+
+### Added
+
+#### Lean 4 formal verification of SessionState invariants (Phase 32)
+- Modeled SessionState with 8 typed registries in Lean 4 (v4.15.0)
+- Defined `valid` predicate encoding 7 referential integrity invariants
+- Proved all 10 mutation operations preserve invariants (register, cascade delete, cleanup)
+- Proved `removeMesh_valid` -- cascade deletion correctness (highest-value proof)
+- Proved `removeSpaceDeps_valid` -- space-dependent cleanup correctness
+- Proved path validation containment security property (abstract over resolve/check)
+- Proved 13 error codes pairwise distinct via `native_decide`
+- Proved MeshInfo field invariants (tdim <= gdim, 6 valid dimension pairs)
+- 20 theorems + 4 helper lemmas, zero `sorry` placeholders
+- All proofs machine-checked by Lean 4 type checker (`lake build` exits 0)
+- Proofs located in `.outline/proofs/DolfinxProofs/`
+
+---
+
 ## [0.5.0] - 2026-02-07
 
 ### Fixed
