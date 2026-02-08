@@ -6,6 +6,65 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.6.1] - 2026-02-07
+
+### Fixed
+
+#### Layer 0 -- pyright zero warnings (Phase 34A)
+- Resolved all 8 `reportUnknownParameterType` warnings
+- Added `dict[str, Any]` return annotations to 6 provider functions
+- Annotated `space_object: Any` in `session.py` and `function: Any` in `utils.py`
+- Result: 0 errors, 0 warnings, 0 informations
+
+#### Layer 1 -- Idris 2 proof hole closed (Phase 34B)
+- Replaced `noRefWithoutKey` (had hole `?noRefWithoutKey_rhs`) with correctly typed
+  `noRefForAbsentKey` proof
+- New type: `Not (HasKey k ks) -> (ref : ValidRef ks) -> Not (ref.name = k)`
+- One-line proof by substitution contradiction; zero holes remaining
+
+### Added
+
+#### Layer 2 -- Quint model extended for forms (Phase 34C)
+- Added 4 state variables: `form_keys`, `ufl_symbol_keys`, `solver_diag_count`,
+  `log_buffer_count`
+- Added `registerForm` and `registerUflSymbol` actions (require non-empty spaces)
+- Updated `removeMesh` with conditional wholesale clear of forms/ufl_symbols
+- Added INV-8: `form_keys.size() > 0 implies space_keys.size() > 0`
+- Added `forms_cascade_scenario` exercising register-then-cascade-delete
+- Random simulation: 298 traces, 50 steps each, no violations
+
+#### Layer 3 -- Lean 4 forms invariant (Phase 34D)
+- Extended `SessionState` with `forms : List String` and `ufl_symbols : List String`
+- Added INV-8 to `valid` predicate: `forms != [] -> function_spaces != []`
+- Updated `removeMesh` to conditionally clear forms when dependent spaces exist
+- Extended all 10 preservation theorems for 8 invariants (was 7)
+- Key proof: `removeMesh_valid` INV-8 case analysis -- depSpaceKeys empty vs non-empty
+
+#### Layer 5 -- Test coverage expansion (Phase 34E)
+- Added ~50 new tests: getter coverage, form lifecycle, golden scenarios
+- Added form-related property tests (`TestFormWholesaleClear`, `TestFormSpaceInvariant`)
+- Added `register_form_op` and `register_ufl_symbol_op` hypothesis strategies
+- Coverage: 92.49% (296 passed, 3 skipped), gate raised to 90%
+
+### Changed
+- Version bump from 0.6.0 to 0.6.1
+- Coverage `fail_under` gate raised from 80% to 90%
+
+#### Updated Cross-Layer Correspondence
+
+```
+Layer | Tool    | What It Catches             | Status
+------|---------|-----------------------------|--------
+  0   | pyright | Type errors, None safety    | 0 errors, 0 warnings
+  1   | Idris 2 | Invalid construction        | 5 modules, 0 holes
+  2   | Quint   | Multi-step sequence bugs    | 8 invariants, 298 traces
+  3   | Lean 4  | Invariant violations        | 20+ theorems, 8 invariants
+  4   | ruff    | Runtime contract violations | 31 tools
+  5   | pytest  | Behavioral bugs + coverage  | 296 tests, 92.49%
+```
+
+---
+
 ## [0.6.0] - 2026-02-07
 
 ### Added
