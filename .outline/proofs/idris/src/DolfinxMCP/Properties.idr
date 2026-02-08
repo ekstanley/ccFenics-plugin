@@ -98,14 +98,10 @@ export
 noDanglingRef : Not (HasKey k [])
 noDanglingRef = \case _ impossible
 
-||| Stronger: if k is not in ks, no ValidRef ks with name=k can exist.
+||| Stronger: if k is not in ks, no ValidRef whose name equals k can exist.
+||| This precisely captures the impossibility of a dangling reference.
 export
-noRefWithoutKey : {k : String} -> {ks : List String}
-              -> Not (HasKey k ks)
-              -> Not (ValidRef ks)  -- with name = k, but we can't express this directly
-                                    -- without dependent pair; the HasKey proof IS the ref
-noRefWithoutKey notIn (MkValidRef n prf) = ?noRefWithoutKey_rhs
--- Note: This partial proof demonstrates the approach. A complete version
--- would use a dependent pair (k ** ValidRef ks) to fully express the
--- constraint. The fundamental impossibility is already proven by
--- noDanglingRef and removeKeyAbsent.
+noRefForAbsentKey : {k : String} -> {ks : List String}
+                 -> Not (HasKey k ks)
+                 -> (ref : ValidRef ks) -> Not (ref.name = k)
+noRefForAbsentKey notHas (MkValidRef k prf) Refl = notHas prf
