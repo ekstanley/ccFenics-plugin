@@ -1,8 +1,8 @@
 // session_state.qnt -- DOLFINx MCP SessionState complete specification
 //
 // Single-file Quint spec containing:
-//   1. State machine model (8 vars, 10 actions)
-//   2. 7 referential integrity invariants (INV-1 through INV-7)
+//   1. State machine model (12 vars, 12 actions)
+//   2. 8 referential integrity invariants (INV-1 through INV-8)
 //   3. Safety/liveness properties
 //   4. Concrete model-check scenarios
 //
@@ -16,6 +16,8 @@
 //   sols:    {u1, u2}
 //   tags:    {t1, t2}
 //   emaps:   {em1, em2}
+//   forms:   {F1, F2}
+//   ufls:    {sym1, sym2}
 
 module session_state {
 
@@ -39,6 +41,10 @@ module session_state {
   var sol_keys:   Set[str]
   var tag_keys:   Set[str]
   var emap_keys:  Set[str]
+  var form_keys:         Set[str]
+  var ufl_symbol_keys:   Set[str]
+  var solver_diag_count: int
+  var log_buffer_count:  int
 
   // =========================================================================
   // Name pools (bounded for exhaustive checking)
@@ -51,6 +57,8 @@ module session_state {
   val SOL_NAMES:   Set[str] = Set("u1", "u2")
   val TAG_NAMES:   Set[str] = Set("t1", "t2")
   val EMAP_NAMES:  Set[str] = Set("em1", "em2")
+  val FORM_NAMES: Set[str] = Set("F1", "F2")
+  val UFL_NAMES:  Set[str] = Set("sym1", "sym2")
 
   // =========================================================================
   // Init
@@ -71,6 +79,10 @@ module session_state {
     sol_keys'        = Set(),
     tag_keys'        = Set(),
     emap_keys'       = Set(),
+    form_keys'         = Set(),
+    ufl_symbol_keys'   = Set(),
+    solver_diag_count' = 0,
+    log_buffer_count'  = 0,
   }
 
   // =========================================================================
@@ -93,6 +105,10 @@ module session_state {
     sol_keys'        = sol_keys,
     tag_keys'        = tag_keys,
     emap_keys'       = emap_keys,
+    form_keys'         = form_keys,
+    ufl_symbol_keys'   = ufl_symbol_keys,
+    solver_diag_count' = solver_diag_count,
+    log_buffer_count'  = log_buffer_count,
   }
 
   action registerFunctionSpace(name: str, meshName: str): bool = all {
@@ -112,6 +128,10 @@ module session_state {
     sol_keys'        = sol_keys,
     tag_keys'        = tag_keys,
     emap_keys'       = emap_keys,
+    form_keys'         = form_keys,
+    ufl_symbol_keys'   = ufl_symbol_keys,
+    solver_diag_count' = solver_diag_count,
+    log_buffer_count'  = log_buffer_count,
   }
 
   action registerFunction(name: str, spaceName: str): bool = all {
@@ -131,6 +151,10 @@ module session_state {
     sol_keys'        = sol_keys,
     tag_keys'        = tag_keys,
     emap_keys'       = emap_keys,
+    form_keys'         = form_keys,
+    ufl_symbol_keys'   = ufl_symbol_keys,
+    solver_diag_count' = solver_diag_count,
+    log_buffer_count'  = log_buffer_count,
   }
 
   action registerBC(name: str, spaceName: str): bool = all {
@@ -150,6 +174,10 @@ module session_state {
     sol_keys'        = sol_keys,
     tag_keys'        = tag_keys,
     emap_keys'       = emap_keys,
+    form_keys'         = form_keys,
+    ufl_symbol_keys'   = ufl_symbol_keys,
+    solver_diag_count' = solver_diag_count,
+    log_buffer_count'  = log_buffer_count,
   }
 
   action registerSolution(name: str, spaceName: str): bool = all {
@@ -169,6 +197,10 @@ module session_state {
     bc_keys'         = bc_keys,
     tag_keys'        = tag_keys,
     emap_keys'       = emap_keys,
+    form_keys'         = form_keys,
+    ufl_symbol_keys'   = ufl_symbol_keys,
+    solver_diag_count' = solver_diag_count,
+    log_buffer_count'  = log_buffer_count,
   }
 
   action registerMeshTags(name: str, meshName: str): bool = all {
@@ -188,6 +220,10 @@ module session_state {
     bc_keys'         = bc_keys,
     sol_keys'        = sol_keys,
     emap_keys'       = emap_keys,
+    form_keys'         = form_keys,
+    ufl_symbol_keys'   = ufl_symbol_keys,
+    solver_diag_count' = solver_diag_count,
+    log_buffer_count'  = log_buffer_count,
   }
 
   action registerEntityMap(name: str, parent: str, child: str): bool = all {
@@ -208,6 +244,58 @@ module session_state {
     bc_keys'         = bc_keys,
     sol_keys'        = sol_keys,
     tag_keys'        = tag_keys,
+    form_keys'         = form_keys,
+    ufl_symbol_keys'   = ufl_symbol_keys,
+    solver_diag_count' = solver_diag_count,
+    log_buffer_count'  = log_buffer_count,
+  }
+
+  // registerForm: forms have no FK but require at least one space to exist
+  action registerForm(name: str): bool = all {
+    space_keys.size() > 0,
+    not(form_keys.contains(name)),
+    form_keys'         = form_keys.union(Set(name)),
+    meshes'            = meshes,
+    active_mesh'       = active_mesh,
+    function_spaces'   = function_spaces,
+    functions'         = functions,
+    bcs'               = bcs,
+    solutions'         = solutions,
+    mesh_tags'         = mesh_tags,
+    entity_maps'       = entity_maps,
+    space_keys'        = space_keys,
+    func_keys'         = func_keys,
+    bc_keys'           = bc_keys,
+    sol_keys'          = sol_keys,
+    tag_keys'          = tag_keys,
+    emap_keys'         = emap_keys,
+    ufl_symbol_keys'   = ufl_symbol_keys,
+    solver_diag_count' = solver_diag_count,
+    log_buffer_count'  = log_buffer_count,
+  }
+
+  // registerUflSymbol: same precondition as forms
+  action registerUflSymbol(name: str): bool = all {
+    space_keys.size() > 0,
+    not(ufl_symbol_keys.contains(name)),
+    ufl_symbol_keys'   = ufl_symbol_keys.union(Set(name)),
+    meshes'            = meshes,
+    active_mesh'       = active_mesh,
+    function_spaces'   = function_spaces,
+    functions'         = functions,
+    bcs'               = bcs,
+    solutions'         = solutions,
+    mesh_tags'         = mesh_tags,
+    entity_maps'       = entity_maps,
+    space_keys'        = space_keys,
+    func_keys'         = func_keys,
+    bc_keys'           = bc_keys,
+    sol_keys'          = sol_keys,
+    tag_keys'          = tag_keys,
+    emap_keys'         = emap_keys,
+    form_keys'         = form_keys,
+    solver_diag_count' = solver_diag_count,
+    log_buffer_count'  = log_buffer_count,
   }
 
   // removeMesh: cascade delete all dependents
@@ -240,6 +328,11 @@ module session_state {
       solutions'       = solutions,
       mesh_tags'       = mesh_tags,
       entity_maps'     = entity_maps,
+      // Forms and UFL symbols cleared wholesale when any space is deleted
+      form_keys'         = if (deadSpaces.size() > 0) Set() else form_keys,
+      ufl_symbol_keys'   = if (deadSpaces.size() > 0) Set() else ufl_symbol_keys,
+      solver_diag_count' = solver_diag_count,
+      log_buffer_count'  = log_buffer_count,
     }
   }
 
@@ -259,6 +352,10 @@ module session_state {
     sol_keys'        = Set(),
     tag_keys'        = Set(),
     emap_keys'       = Set(),
+    form_keys'         = Set(),
+    ufl_symbol_keys'   = Set(),
+    solver_diag_count' = 0,
+    log_buffer_count'  = 0,
   }
 
   // No-op stutter step (for scenario terminal assertions)
@@ -277,6 +374,10 @@ module session_state {
     sol_keys'        = sol_keys,
     tag_keys'        = tag_keys,
     emap_keys'       = emap_keys,
+    form_keys'         = form_keys,
+    ufl_symbol_keys'   = ufl_symbol_keys,
+    solver_diag_count' = solver_diag_count,
+    log_buffer_count'  = log_buffer_count,
   }
 
   // =========================================================================
@@ -298,6 +399,8 @@ module session_state {
     nondet e = EMAP_NAMES.oneOf(); nondet p = MESH_NAMES.oneOf();
       nondet c = MESH_NAMES.oneOf(); registerEntityMap(e, p, c),
     nondet m = MESH_NAMES.oneOf(); removeMesh(m),
+    nondet fn = FORM_NAMES.oneOf(); registerForm(fn),
+    nondet un = UFL_NAMES.oneOf(); registerUflSymbol(un),
     cleanup,
   }
 
@@ -336,7 +439,13 @@ module session_state {
       meshes.contains(entity_maps.get(e)._2)
     )
 
-  // Composite: all 7 invariants
+  // INV-8: forms can only exist if at least one function_space exists
+  // (forms are cleared wholesale when spaces are deleted, so
+  //  forms_non_empty => spaces_non_empty)
+  val inv8_forms_require_spaces: bool =
+    form_keys.size() > 0 implies space_keys.size() > 0
+
+  // Composite: all 8 invariants
   val all_invariants: bool = and {
     inv1_active_mesh_valid,
     inv2_spaces_reference_valid_meshes,
@@ -345,6 +454,7 @@ module session_state {
     inv5_solutions_reference_valid_spaces,
     inv6_tags_reference_valid_meshes,
     inv7_entity_maps_reference_valid_meshes,
+    inv8_forms_require_spaces,
   }
 
   // =========================================================================
@@ -359,6 +469,8 @@ module session_state {
     sol_keys    == Set(),
     tag_keys    == Set(),
     emap_keys   == Set(),
+    form_keys   == Set(),
+    ufl_symbol_keys == Set(),
     active_mesh == "",
   }
 
@@ -463,6 +575,25 @@ module session_state {
         assert(not(emap_keys.contains("em1"))),
         assert(meshes.contains("m2")),
         assert(space_keys.contains("V2")),
+        assert(all_invariants),
+        stutter,
+      })
+  }
+
+  // Scenario 6: Forms cascade -- forms cleared when spaces deleted
+  run forms_cascade_scenario = {
+    init
+      .then(registerMesh("m1"))
+      .then(registerFunctionSpace("V1", "m1"))
+      .then(registerForm("F1"))
+      .then(registerUflSymbol("sym1"))
+      .then(removeMesh("m1"))
+      .then(all {
+        assert(not(meshes.contains("m1"))),
+        assert(not(space_keys.contains("V1"))),
+        assert(not(form_keys.contains("F1"))),
+        assert(not(ufl_symbol_keys.contains("sym1"))),
+        assert(is_empty_state),
         assert(all_invariants),
         stutter,
       })
