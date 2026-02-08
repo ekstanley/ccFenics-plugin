@@ -6,6 +6,61 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.5.0] - 2026-02-07
+
+### Fixed
+
+#### CRITICAL: plot_solution VTK stdout corruption (Phase 31A)
+- Added `_suppress_stdout()` context manager using fd-level redirect
+  (`os.dup`/`os.dup2`) to suppress VTK/PyVista C-level stdout writes
+  that corrupted the MCP stdio JSON-RPC transport stream
+- Graceful no-op fallback when `sys.stdout.fileno()` is unavailable
+  (pytest capture mode)
+
+#### CRITICAL: plot_solution return type violation (Phase 31B)
+- Changed `plot_solution` to return a single `dict` instead of
+  `[dict, Image(...)]`, matching the return type contract of all
+  other 30 tools
+- Removed unused `Image` import from `mcp.server.fastmcp.utilities.types`
+
+### Added
+
+#### Output path validation (Phase 31C)
+- Added `_validate_output_path()` helper in postprocess.py that validates
+  output file paths resolve within `/workspace` using `os.path.realpath`
+- Applied to both `export_solution` and `plot_solution` tools
+- Path traversal attempts (e.g., `../../etc/passwd`) now raise `FileIOError`
+  with `FILE_IO_ERROR` code (defense-in-depth, complements Docker isolation)
+
+#### README.md (Phase 31D)
+- Created project README with quick start, 31-tool catalog grouped by
+  module, architecture diagram, transport modes, JupyterLab integration,
+  and development commands
+
+#### PyPI metadata (Phase 31E)
+- Added readme, authors, keywords, classifiers, and project.urls to
+  `pyproject.toml` for proper PyPI distribution
+
+#### Contract tests (Phase 31)
+- 11 new tests: `_suppress_stdout` (2), `plot_solution` return type (2),
+  `_validate_output_path` (7)
+
+### Changed
+
+#### Ruff lint rules expanded (Phase 31F)
+- Added B (bugbear), C4 (comprehensions), UP (pyupgrade), SIM (simplify)
+  rule families to ruff configuration
+- Ignored B008 (FastMCP sentinel defaults), SIM102 (debug guard pattern),
+  SIM117 (multi-line context manager readability)
+- Fixed ~33 auto-fixable findings across src/, tests/, examples/
+- `Callable` imports moved from `typing` to `collections.abc` (UP035)
+
+#### Version sync
+- Synced `__init__.py` version from `"0.1.0"` to `"0.5.0"` (was never
+  updated since initial project creation)
+
+---
+
 ## [0.4.2] - 2026-02-07
 
 ### Added

@@ -12,7 +12,6 @@ This test exercises the complete Poisson equation solve:
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -21,7 +20,7 @@ import pytest
 dolfinx = pytest.importorskip("dolfinx")
 
 
-from dolfinx_mcp.session import SessionState
+from dolfinx_mcp.session import SessionState  # noqa: E402
 
 
 class _FakeContext:
@@ -48,15 +47,15 @@ class TestPoissonWorkflow:
     @pytest.mark.asyncio
     async def test_full_poisson(self, session: SessionState, ctx: _FakeContext):
         from dolfinx_mcp.tools.mesh import create_unit_square
-        from dolfinx_mcp.tools.spaces import create_function_space
+        from dolfinx_mcp.tools.postprocess import compute_error
         from dolfinx_mcp.tools.problem import (
             apply_boundary_condition,
             define_variational_form,
             set_material_properties,
         )
-        from dolfinx_mcp.tools.solver import solve
-        from dolfinx_mcp.tools.postprocess import compute_error
         from dolfinx_mcp.tools.session_mgmt import get_session_state
+        from dolfinx_mcp.tools.solver import solve
+        from dolfinx_mcp.tools.spaces import create_function_space
 
         # Step 1: Create mesh
         result = await create_unit_square(name="mesh", nx=32, ny=32, ctx=ctx)

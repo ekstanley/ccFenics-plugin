@@ -39,8 +39,6 @@ class TestConfigureLogging:
         root = logging.getLogger()
         dummy = logging.StreamHandler()
         root.addHandler(dummy)
-        handler_count_before = len(root.handlers)
-
         configure_logging()
 
         # After configure, root should have exactly 1 handler (the new stderr one)

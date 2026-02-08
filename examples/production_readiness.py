@@ -896,7 +896,7 @@ except Exception as e:
         print(f"{'=' * 70}")
 
         # Group by phase
-        phases = sorted(set(r.phase for r in self.results))
+        phases = sorted({r.phase for r in self.results})
         phase_names = {
             "P0": "Connectivity & Discovery",
             "P1": "Mesh Creation & Quality",

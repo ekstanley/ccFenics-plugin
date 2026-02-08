@@ -9,7 +9,8 @@ container (--network none, non-root, --rm) provides the security boundary.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from mcp.server.fastmcp import Context
 
@@ -171,10 +172,9 @@ async def define_variational_form(
     else:
         V_trial_info = session.get_only_space()
 
-    if test_space is not None:
-        V_test_info = session.get_space(test_space)
-    else:
-        V_test_info = V_trial_info
+    V_test_info = (
+        session.get_space(test_space) if test_space is not None else V_trial_info
+    )
 
     V_trial = V_trial_info.space
     V_test = V_test_info.space

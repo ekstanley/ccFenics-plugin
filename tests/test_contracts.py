@@ -6,11 +6,18 @@ and tool precondition checks. No Docker or DOLFINx required.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+import io
+import os
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dolfinx_mcp.errors import FunctionNotFoundError, InvariantError, PostconditionError, PreconditionError
+from dolfinx_mcp.errors import (
+    FileIOError,
+    FunctionNotFoundError,
+    InvariantError,
+    PostconditionError,
+)
 from dolfinx_mcp.session import (
     BCInfo,
     EntityMapInfo,
@@ -22,7 +29,6 @@ from dolfinx_mcp.session import (
     SessionState,
     SolutionInfo,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -847,7 +853,6 @@ class TestPhase9ExceptionGuards:
     async def test_create_unit_square_preserves_precondition_error(self):
         """PreconditionError propagates correctly through the DOLFINxMCPError guard
         in create_unit_square, not swallowed by except Exception."""
-        import sys
 
         from dolfinx_mcp.tools.mesh import create_unit_square
 
@@ -2094,16 +2099,15 @@ class TestPhase17Postconditions:
         mock_mpi = MagicMock()
 
         with patch("os.path.exists", return_value=True), \
-             patch("os.path.getsize", return_value=0):
-            with patch.dict(sys.modules, {
-                "mpi4py": mock_mpi,
-                "mpi4py.MPI": mock_mpi.MPI,
-                "dolfinx": mock_dolfinx,
-                "dolfinx.io": mock_dolfinx_io,
-            }):
-                result = await export_solution(
-                    filename="test.xdmf", format="xdmf", ctx=ctx,
-                )
+             patch("os.path.getsize", return_value=0), patch.dict(sys.modules, {
+            "mpi4py": mock_mpi,
+            "mpi4py.MPI": mock_mpi.MPI,
+            "dolfinx": mock_dolfinx,
+            "dolfinx.io": mock_dolfinx_io,
+        }):
+            result = await export_solution(
+                filename="test.xdmf", format="xdmf", ctx=ctx,
+            )
 
         assert result["error"] == "POSTCONDITION_VIOLATED"
         assert "empty file" in result["message"]
@@ -2132,13 +2136,12 @@ class TestPhase17Postconditions:
         mock_dolfinx = MagicMock()
         mock_dolfinx.plot = mock_dolfinx_plot
 
-        with patch("os.path.exists", return_value=False):
-            with patch.dict(sys.modules, {
-                "pyvista": mock_pyvista,
-                "dolfinx": mock_dolfinx,
-                "dolfinx.plot": mock_dolfinx_plot,
-            }):
-                result = await plot_solution(ctx=ctx)
+        with patch("os.path.exists", return_value=False), patch.dict(sys.modules, {
+            "pyvista": mock_pyvista,
+            "dolfinx": mock_dolfinx,
+            "dolfinx.plot": mock_dolfinx_plot,
+        }):
+            result = await plot_solution(ctx=ctx)
 
         assert result["error"] == "POSTCONDITION_VIOLATED"
         assert "not created" in result["message"]
@@ -2396,7 +2399,6 @@ class TestPhase20LocalTestCompletion:
     @pytest.mark.asyncio
     async def test_get_solver_diagnostics_returns_expected_keys(self):
         """get_solver_diagnostics returns expected structure."""
-        import sys
 
         from dolfinx_mcp.tools.solver import get_solver_diagnostics
 
@@ -2456,6 +2458,7 @@ class TestPhase22PostconditionEdgeCases:
     async def test_solve_postcondition_nan_solution(self):
         """solve() fires SolverError when solution contains NaN."""
         import sys
+
         from dolfinx_mcp.tools.solver import solve
 
         session = _populated_session()
@@ -2485,6 +2488,7 @@ class TestPhase22PostconditionEdgeCases:
     async def test_solve_postcondition_negative_l2_norm(self):
         """solve() fires PostconditionError when L2 norm is negative."""
         import sys
+
         from dolfinx_mcp.tools.solver import solve
 
         session = _populated_session()
@@ -2542,6 +2546,7 @@ class TestPhase22PostconditionEdgeCases:
     async def test_compute_error_postcondition_nan(self):
         """compute_error() fires PostconditionError when error value is NaN."""
         import sys
+
         from dolfinx_mcp.tools.postprocess import compute_error
 
         session = _populated_session()
@@ -2572,3 +2577,200 @@ class TestPhase22PostconditionEdgeCases:
 
         assert result["error"] == "POSTCONDITION_VIOLATED"
         assert "finite" in result["message"]
+
+
+# ---------------------------------------------------------------------------
+# Phase 31: postprocess.py _suppress_stdout, _validate_output_path, return type
+# ---------------------------------------------------------------------------
+
+
+class TestSuppressStdout:
+    """Tests for _suppress_stdout() context manager (Phase 31A)."""
+
+    def test_fd_redirect_and_restore(self):
+        """Verify stdout fd is redirected then restored after context exits."""
+        from dolfinx_mcp.tools.postprocess import _suppress_stdout
+
+        # Capture stdout fd before
+        original_fd = os.dup(1)
+        try:
+            with _suppress_stdout():
+                # Inside: fd 1 should point to /dev/null
+                # Writing should not produce output (can't easily verify
+                # the target, but the context should not raise)
+                pass
+
+            # After: stdout fd should be restored
+            # Verify by writing to fd 1 -- should succeed without error
+            os.write(1, b"")  # zero-byte write as sanity check
+        finally:
+            os.close(original_fd)
+
+    def test_graceful_noop_when_no_fileno(self):
+        """Verify _suppress_stdout is a no-op when stdout lacks fileno()."""
+        from dolfinx_mcp.tools.postprocess import _suppress_stdout
+
+        # Replace sys.stdout with an object that raises on fileno()
+        fake_stdout = io.StringIO()
+        with patch("dolfinx_mcp.tools.postprocess.sys.stdout", fake_stdout):
+            # Should not raise -- graceful fallback
+            with _suppress_stdout():
+                pass  # no-op path
+
+
+class TestValidateOutputPath:
+    """Tests for _validate_output_path() helper (Phase 31C)."""
+
+    def test_simple_filename(self):
+        """Simple filename resolves to /workspace/filename."""
+        from dolfinx_mcp.tools.postprocess import _validate_output_path
+
+        result = _validate_output_path("result.xdmf")
+        assert result == "/workspace/result.xdmf"
+
+    def test_subdirectory_path(self):
+        """Subdirectory path resolves within /workspace."""
+        from dolfinx_mcp.tools.postprocess import _validate_output_path
+
+        result = _validate_output_path("sub/result.xdmf")
+        assert result == "/workspace/sub/result.xdmf"
+
+    def test_absolute_workspace_path(self):
+        """Absolute path already within /workspace is accepted."""
+        from dolfinx_mcp.tools.postprocess import _validate_output_path
+
+        result = _validate_output_path("/workspace/result.xdmf")
+        # os.path.join("/workspace", "/workspace/result.xdmf") = "/workspace/result.xdmf"
+        assert result == "/workspace/result.xdmf"
+
+    def test_path_traversal_rejected(self):
+        """Path traversal via ../../ is rejected with FileIOError."""
+        from dolfinx_mcp.tools.postprocess import _validate_output_path
+
+        with pytest.raises(FileIOError, match="must be within /workspace"):
+            _validate_output_path("../../etc/passwd")
+
+    def test_absolute_outside_workspace_rejected(self):
+        """Absolute path outside /workspace is rejected."""
+        from dolfinx_mcp.tools.postprocess import _validate_output_path
+
+        with pytest.raises(FileIOError, match="must be within /workspace"):
+            _validate_output_path("/tmp/evil.xdmf")
+
+    @pytest.mark.asyncio
+    async def test_export_solution_rejects_traversal(self, mock_ctx):
+        """export_solution rejects path traversal with FILE_IO_ERROR."""
+        from dolfinx_mcp.tools.postprocess import export_solution
+
+        result = await export_solution(
+            filename="../../etc/passwd", format="xdmf", ctx=mock_ctx,
+        )
+        assert result["error"] == "FILE_IO_ERROR"
+        assert "/workspace" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_plot_solution_rejects_traversal(self, mock_ctx):
+        """plot_solution rejects output_file outside /workspace with FILE_IO_ERROR."""
+        from dolfinx_mcp.tools.postprocess import plot_solution
+
+        result = await plot_solution(
+            output_file="/tmp/evil.png", ctx=mock_ctx,
+        )
+        assert result["error"] == "FILE_IO_ERROR"
+        assert "/workspace" in result["message"]
+
+
+class TestPlotSolutionReturnType:
+    """Tests for plot_solution return type fix (Phase 31B)."""
+
+    def _setup_plot_session(self, mock_ctx):
+        """Set up a mock session with a solution for plot tests."""
+        session = mock_ctx.request_context.lifespan_context
+
+        mock_func = MagicMock()
+        mock_func.function_space = MagicMock()
+        mock_func.x.array.real = [0.0, 1.0, 2.0]
+
+        sol_info = SolutionInfo(
+            name="u_h",
+            space_name="V",
+            function=mock_func,
+            converged=True,
+            iterations=1,
+            residual_norm=1e-10,
+            wall_time=0.1,
+        )
+        space_info = FunctionSpaceInfo(
+            name="V",
+            mesh_name="m",
+            space=MagicMock(),
+            element_family="Lagrange",
+            element_degree=1,
+            num_dofs=10,
+        )
+        mesh_info = MeshInfo(
+            name="m",
+            mesh=MagicMock(),
+            cell_type="triangle",
+            tdim=2,
+            gdim=2,
+            num_cells=8,
+            num_vertices=9,
+        )
+
+        session.meshes = {"m": mesh_info}
+        session.function_spaces = {"V": space_info}
+        session.solutions = {"u_h": sol_info}
+        session.functions = {}
+        return session
+
+    @pytest.mark.asyncio
+    async def test_return_type_is_dict(self, mock_ctx):
+        """plot_solution must return dict, not list."""
+        import sys
+
+        mock_pyvista = MagicMock()
+        mock_vtk_mesh = MagicMock(return_value=(MagicMock(), MagicMock(), MagicMock()))
+        mock_pyvista.Plotter.return_value = MagicMock()
+
+        from dolfinx_mcp.tools.postprocess import plot_solution
+
+        self._setup_plot_session(mock_ctx)
+
+        with patch.dict(sys.modules, {
+            "pyvista": mock_pyvista,
+            "dolfinx.plot": MagicMock(vtk_mesh=mock_vtk_mesh),
+        }), patch("os.path.exists", return_value=True), \
+                patch("os.path.getsize", return_value=1024):
+            result = await plot_solution(
+                output_file="/workspace/test.png", ctx=mock_ctx,
+            )
+
+        # Must be dict, not list
+        assert isinstance(result, dict), f"Expected dict, got {type(result).__name__}"
+
+    @pytest.mark.asyncio
+    async def test_return_dict_keys(self, mock_ctx):
+        """plot_solution return dict must have file_path, plot_type, file_size_bytes."""
+        import sys
+
+        mock_pyvista = MagicMock()
+        mock_vtk_mesh = MagicMock(return_value=(MagicMock(), MagicMock(), MagicMock()))
+        mock_pyvista.Plotter.return_value = MagicMock()
+
+        from dolfinx_mcp.tools.postprocess import plot_solution
+
+        self._setup_plot_session(mock_ctx)
+
+        with patch.dict(sys.modules, {
+            "pyvista": mock_pyvista,
+            "dolfinx.plot": MagicMock(vtk_mesh=mock_vtk_mesh),
+        }), patch("os.path.exists", return_value=True), \
+                patch("os.path.getsize", return_value=512):
+            result = await plot_solution(
+                output_file="/workspace/test.png", ctx=mock_ctx,
+            )
+
+        assert "file_path" in result
+        assert "plot_type" in result
+        assert "file_size_bytes" in result

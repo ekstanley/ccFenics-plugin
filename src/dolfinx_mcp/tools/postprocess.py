@@ -7,17 +7,20 @@ provides the security boundary.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import logging
 import os
+import sys
 from typing import Any
 
 from mcp.server.fastmcp import Context
-from mcp.server.fastmcp.utilities.types import Image
 
 from .._app import mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
+    FileIOError,
     FunctionNotFoundError,
     PostconditionError,
     PreconditionError,
@@ -30,6 +33,56 @@ logger = logging.getLogger(__name__)
 
 def _get_session(ctx: Context) -> SessionState:
     return ctx.request_context.lifespan_context
+
+
+@contextlib.contextmanager
+def _suppress_stdout():
+    """Redirect stdout (including C-level fd 1) to /dev/null.
+
+    VTK/PyVista initialization emits text to stdout which corrupts
+    the MCP stdio JSON-RPC transport. This guard suppresses all
+    stdout writes during VTK operations.
+
+    Gracefully degrades to no-op if stdout has no file descriptor
+    (e.g., in pytest capture mode).
+    """
+    try:
+        stdout_fd = sys.stdout.fileno()
+    except (AttributeError, io.UnsupportedOperation):
+        yield
+        return
+
+    saved_fd = os.dup(stdout_fd)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull, stdout_fd)
+        yield
+    finally:
+        os.dup2(saved_fd, stdout_fd)
+        os.close(saved_fd)
+        os.close(devnull)
+
+
+def _validate_output_path(path: str) -> str:
+    """Validate and resolve an output file path within /workspace.
+
+    Args:
+        path: Raw file path from tool arguments.
+
+    Returns:
+        Resolved absolute path within /workspace.
+
+    Raises:
+        FileIOError: If the resolved path escapes /workspace.
+    """
+    resolved = os.path.realpath(os.path.join("/workspace", path))
+    if not resolved.startswith("/workspace"):
+        raise FileIOError(
+            f"Output path must be within /workspace, got '{path}'.",
+            suggestion="Use a simple filename like 'result.xdmf' or "
+            "a relative path within /workspace.",
+        )
+    return resolved
 
 
 def _eval_exact_expression(expr: str, x: Any) -> Any:
@@ -170,10 +223,13 @@ async def export_solution(
         dict with file_path (str), format (str), file_size_bytes (int),
         and functions_exported (list of function names).
     """
-    # Precondition: validate format before expensive imports
+    # Preconditions: validate inputs before expensive imports
     fmt = format.lower()
     if fmt not in ("xdmf", "vtk"):
         raise PreconditionError(f"format must be 'xdmf' or 'vtk', got '{format}'.")
+
+    # Validate and resolve output path within /workspace
+    filepath = _validate_output_path(filename)
 
     import dolfinx.io
     from mpi4py import MPI
@@ -202,10 +258,6 @@ async def export_solution(
                 "No functions to export.",
                 suggestion="Solve the problem first, or specify function names.",
             )
-
-    # Ensure output directory exists
-    output_dir = "/workspace"
-    filepath = os.path.join(output_dir, filename)
 
     if fmt == "xdmf":
         if not filepath.endswith(".xdmf"):
@@ -547,9 +599,12 @@ async def plot_solution(
     Returns:
         dict with file_path (str), plot_type (str), and file_size_bytes (int).
     """
-    # Precondition: validate plot_type before expensive imports
+    # Preconditions: validate inputs before expensive imports
     if plot_type not in ("contour", "warp"):
         raise PreconditionError(f"plot_type must be 'contour' or 'warp', got '{plot_type}'.")
+
+    # Validate output path within /workspace (early, before session/imports)
+    output_path = _validate_output_path(output_file or "plot.png")
 
     session = _get_session(ctx)
 
@@ -575,24 +630,29 @@ async def plot_solution(
     pyvista.OFF_SCREEN = True
 
     try:
-        # Create VTK mesh
-        topology, cell_types, geometry = vtk_mesh(V)
-        grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
-        grid.point_data["solution"] = uh.x.array.real
+        # Suppress VTK/PyVista stdout to protect stdio JSON-RPC transport
+        with _suppress_stdout():
+            # Create VTK mesh
+            topology, cell_types, geometry = vtk_mesh(V)
+            grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
+            grid.point_data["solution"] = uh.x.array.real
 
-        # Create plotter
-        plotter = pyvista.Plotter(off_screen=True)
+            # Create plotter
+            plotter = pyvista.Plotter(off_screen=True)
 
-        if plot_type == "contour":
-            plotter.add_mesh(grid, scalars="solution", cmap=colormap, show_edges=show_mesh)
-        elif plot_type == "warp":
-            warped = grid.warp_by_scalar("solution", factor=0.1)
-            plotter.add_mesh(warped, scalars="solution", cmap=colormap, show_edges=show_mesh)
+            if plot_type == "contour":
+                plotter.add_mesh(
+                    grid, scalars="solution", cmap=colormap, show_edges=show_mesh,
+                )
+            elif plot_type == "warp":
+                warped = grid.warp_by_scalar("solution", factor=0.1)
+                plotter.add_mesh(
+                    warped, scalars="solution", cmap=colormap, show_edges=show_mesh,
+                )
 
-        # Save screenshot
-        output_path = output_file or "/workspace/plot.png"
-        plotter.screenshot(output_path)
-        plotter.close()
+            # Save screenshot
+            plotter.screenshot(output_path)
+            plotter.close()
 
         # Postcondition: plot file must exist after rendering
         if not os.path.exists(output_path):
@@ -607,14 +667,11 @@ async def plot_solution(
             session.check_invariants()
 
         logger.info("Generated %s plot at %s (%d bytes)", plot_type, output_path, file_size)
-        return [
-            {
-                "file_path": output_path,
-                "plot_type": plot_type,
-                "file_size_bytes": file_size,
-            },
-            Image(path=output_path),
-        ]
+        return {
+            "file_path": output_path,
+            "plot_type": plot_type,
+            "file_size_bytes": file_size,
+        }
 
     except DOLFINxMCPError:
         raise

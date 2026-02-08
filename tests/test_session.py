@@ -17,9 +17,7 @@ from dolfinx_mcp.session import (
     FunctionSpaceInfo,
     MeshInfo,
     SessionState,
-    SolutionInfo,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

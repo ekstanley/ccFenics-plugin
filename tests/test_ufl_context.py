@@ -13,7 +13,6 @@ import pytest
 from dolfinx_mcp.errors import InvalidUFLExpressionError
 from dolfinx_mcp.ufl_context import _check_forbidden, safe_evaluate
 
-
 # ---------------------------------------------------------------------------
 # Forbidden token checks
 # ---------------------------------------------------------------------------

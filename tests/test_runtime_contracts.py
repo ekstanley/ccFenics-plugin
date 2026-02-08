@@ -29,7 +29,7 @@ import pytest
 # Skip entire module if DOLFINx is not available (e.g. running outside Docker)
 dolfinx = pytest.importorskip("dolfinx")
 
-from dolfinx_mcp.session import SessionState
+from dolfinx_mcp.session import SessionState  # noqa: E402
 
 
 class _FakeContext:
@@ -57,13 +57,13 @@ async def _setup_poisson(session: SessionState, ctx: _FakeContext) -> dict:
     speed -- sufficient for contract verification, not accuracy testing.
     """
     from dolfinx_mcp.tools.mesh import create_unit_square
-    from dolfinx_mcp.tools.spaces import create_function_space
     from dolfinx_mcp.tools.problem import (
         apply_boundary_condition,
         define_variational_form,
         set_material_properties,
     )
     from dolfinx_mcp.tools.solver import solve
+    from dolfinx_mcp.tools.spaces import create_function_space
 
     await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
     await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
@@ -251,10 +251,10 @@ class TestNegativePathContracts:
         PostconditionError("Interpolation produced NaN/Inf values.").
         handle_tool_errors catches it, returns error dict.
         """
-        from dolfinx_mcp.tools.mesh import create_unit_square
-        from dolfinx_mcp.tools.spaces import create_function_space
-        from dolfinx_mcp.tools.problem import set_material_properties
         from dolfinx_mcp.tools.interpolation import interpolate
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import set_material_properties
+        from dolfinx_mcp.tools.spaces import create_function_space
 
         await create_unit_square(name="mesh", nx=4, ny=4, ctx=ctx)
         await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
@@ -345,11 +345,11 @@ class TestSessionOperations:
         deletion of mesh and all dependents (spaces, functions, BCs).
         """
         from dolfinx_mcp.tools.mesh import create_unit_square
-        from dolfinx_mcp.tools.spaces import create_function_space
         from dolfinx_mcp.tools.problem import (
             apply_boundary_condition,
             set_material_properties,
         )
+        from dolfinx_mcp.tools.spaces import create_function_space
 
         await create_unit_square(name="mesh", nx=4, ny=4, ctx=ctx)
         await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
@@ -448,7 +448,7 @@ class TestMeshOperations:
 
         Exercises boundary tagging and tag query postconditions.
         """
-        from dolfinx_mcp.tools.mesh import create_unit_square, mark_boundaries, manage_mesh_tags
+        from dolfinx_mcp.tools.mesh import create_unit_square, manage_mesh_tags, mark_boundaries
 
         await create_unit_square(name="m", nx=4, ny=4, ctx=ctx)
         result = await mark_boundaries(
@@ -474,7 +474,7 @@ class TestMeshOperations:
 
         Exercises submesh creation and entity map registration.
         """
-        from dolfinx_mcp.tools.mesh import create_unit_square, mark_boundaries, create_submesh
+        from dolfinx_mcp.tools.mesh import create_submesh, create_unit_square, mark_boundaries
 
         await create_unit_square(name="m", nx=8, ny=8, ctx=ctx)
         tag_result = await mark_boundaries(
@@ -510,14 +510,13 @@ class TestSolverPostprocess:
         steps completed, final time near t_end, and invariant check.
         """
         from dolfinx_mcp.tools.mesh import create_unit_square
-        from dolfinx_mcp.tools.spaces import create_function_space
         from dolfinx_mcp.tools.problem import (
             apply_boundary_condition,
             define_variational_form,
             set_material_properties,
         )
-        from dolfinx_mcp.tools.interpolation import interpolate
         from dolfinx_mcp.tools.solver import solve_time_dependent
+        from dolfinx_mcp.tools.spaces import create_function_space
 
         await create_unit_square(name="mesh", nx=4, ny=4, ctx=ctx)
         await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
@@ -551,7 +550,6 @@ class TestSolverPostprocess:
 
         Exercises: postprocess.py export_solution with XDMF format.
         """
-        import os
         from dolfinx_mcp.tools.postprocess import export_solution
 
         await _setup_poisson(session, ctx)
@@ -615,9 +613,9 @@ class TestPhase14Tools:
         Exercises: session_mgmt.py remove_object with mesh cascade.
         """
         from dolfinx_mcp.tools.mesh import create_unit_square
-        from dolfinx_mcp.tools.spaces import create_function_space
         from dolfinx_mcp.tools.problem import set_material_properties
         from dolfinx_mcp.tools.session_mgmt import remove_object
+        from dolfinx_mcp.tools.spaces import create_function_space
 
         await create_unit_square(name="m", nx=4, ny=4, ctx=ctx)
         await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
@@ -641,7 +639,7 @@ class TestPhase14Tools:
 
         Exercises: mesh.py postconditions for quality metrics.
         """
-        from dolfinx_mcp.tools.mesh import create_unit_square, compute_mesh_quality
+        from dolfinx_mcp.tools.mesh import compute_mesh_quality, create_unit_square
 
         await create_unit_square(name="m", nx=4, ny=4, ctx=ctx)
         result = await compute_mesh_quality(mesh_name="m", ctx=ctx)
@@ -659,9 +657,9 @@ class TestPhase14Tools:
 
         Exercises: interpolation.py project postconditions.
         """
+        from dolfinx_mcp.tools.interpolation import project
         from dolfinx_mcp.tools.mesh import create_unit_square
         from dolfinx_mcp.tools.spaces import create_function_space
-        from dolfinx_mcp.tools.interpolation import project
 
         await create_unit_square(name="mesh", nx=4, ny=4, ctx=ctx)
         await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
