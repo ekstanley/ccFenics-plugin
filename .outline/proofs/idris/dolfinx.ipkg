@@ -1,0 +1,16 @@
+package dolfinx
+
+-- Idris 2 project for DOLFINx MCP SessionState dependent type verification.
+-- Layer 1 of the Outline-Strong 5-layer validation stack.
+--
+-- Invalid SessionState constructions are type errors.
+-- All foreign-key relationships are enforced at compile time via
+-- HasKey proof obligations.
+
+sourcedir = "src"
+
+modules = DolfinxMCP.Registry
+        , DolfinxMCP.SessionState
+        , DolfinxMCP.Operations
+        , DolfinxMCP.Properties
+        , DolfinxMCP.Examples

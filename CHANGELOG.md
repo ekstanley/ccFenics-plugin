@@ -6,6 +6,64 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.6.0] - 2026-02-07
+
+### Added
+
+#### Outline-Strong 5-Layer Validation Stack (Phase 33)
+
+- **Layer 0 -- pyright static type checking**
+  - Added `[tool.pyright]` config (standard mode, Python 3.10 target)
+  - Created `src/dolfinx_mcp/py.typed` PEP 561 marker
+  - Added pyright CI job; 0 errors, 8 warnings (DOLFINx `Any` types)
+  - Fixed 2 genuine type bugs: `errors.py` `__signature__` attr, `server.py` transport literal
+
+- **Layer 1 -- Idris 2 dependent type verification**
+  - Modeled SessionState with intrinsic validity: invalid states are type errors
+  - `HasKey` proof type and `ValidRef` dependent references in `Registry.idr`
+  - 7 type-safe operations: register operations require compile-time membership proofs
+  - Proved `removeKeyAbsent` and `removeKeyPreserves` in the type system
+  - `cleanup` returns `freshState` by type (trivially valid)
+  - 5 worked examples demonstrating construction prevention
+  - Located in `.outline/proofs/idris/`
+
+- **Layer 2 -- Quint state machine model checking**
+  - Modeled SessionState as Quint state machine (14 vars, 11 actions)
+  - 7 invariant predicates mapping 1:1 to `check_invariants()`
+  - Exhaustive model checking via Apalache (depth 8): no violations found
+  - Random simulation (921 traces): no violations
+  - 5 concrete scenarios: cascade delete, partial remove, shared entity map,
+    complex cleanup, parent-only entity map removal
+  - Located in `.outline/specs/session_state.qnt`
+
+- **Layer 5 -- Hypothesis property-based tests + coverage gates**
+  - Added `hypothesis>=6.0` and `pytest-cov>=4.0` to dev dependencies
+  - Created `tests/strategies.py` with 9 operation strategies and `apply_operation` executor
+  - Created `tests/test_property_invariants.py` with 6 property test classes (1800 examples):
+    - P1: Any op sequence preserves all 7 invariants (500 examples)
+    - P2: Cascade deletion leaves no orphans (300 examples)
+    - P3: Cleanup always empties state (200 examples)
+    - P4: Registry keys match Info.name fields (300 examples)
+    - P5: No duplicate keys across registries (200 examples)
+    - P6: After removeMesh, no FK references remain (300 examples)
+  - Coverage gate: 80% minimum, currently 86.53%
+  - CI updated with `--cov` flags and `--cov-fail-under=80`
+
+#### Validation Stack Summary
+
+```
+Layer | Tool    | What It Catches             | Status
+------|---------|-----------------------------|--------
+  0   | pyright | Type errors, None safety    | 0 errors
+  1   | Idris 2 | Invalid construction        | 5 modules
+  2   | Quint   | Multi-step sequence bugs    | verified
+  3   | Lean 4  | Invariant violations        | 20 theorems
+  4   | Manual  | Runtime contract violations | 31 tools
+  5   | pytest  | Behavioral bugs + coverage  | 246 tests, 86%
+```
+
+---
+
 ## [0.5.1] - 2026-02-07
 
 ### Added

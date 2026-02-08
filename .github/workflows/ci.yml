@@ -17,6 +17,16 @@ jobs:
       - run: pip install ruff
       - run: ruff check src/
 
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]" pyright
+      - run: pyright src/dolfinx_mcp/
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -25,4 +35,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev,jupyter]"
-      - run: pytest tests/ --ignore=tests/test_runtime_contracts.py -v
+      - run: >
+          pytest tests/
+          --ignore=tests/test_runtime_contracts.py
+          --cov=dolfinx_mcp
+          --cov-report=term-missing
+          --cov-fail-under=80
+          -v

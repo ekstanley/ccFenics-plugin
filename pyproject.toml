@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dolfinx-mcp"
-version = "0.5.1"
+version = "0.6.0"
 description = "MCP server for FEniCSx/DOLFINx finite element computing"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,6 +38,8 @@ Changelog = "https://github.com/estanley/ccFenics-plugin/blob/main/CHANGELOG.md"
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "hypothesis>=6.0",
     "ruff>=0.4",
 ]
 jupyter = [
@@ -66,4 +68,34 @@ ignore = [
     "B008",    # FastMCP tool signatures use ctx: Context = None sentinel
     "SIM102",  # Preserve if __debug__: if condition: guard pattern for clarity
     "SIM117",  # Nested with blocks more readable for multi-line context managers
+]
+
+[tool.pyright]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+include = ["src/dolfinx_mcp"]
+exclude = ["tests", "examples", "src/dolfinx_mcp/tools"]
+reportMissingTypeStubs = "warning"
+reportUnknownParameterType = "warning"
+reportMissingImports = false
+reportUnnecessaryTypeIgnoreComment = true
+
+[tool.coverage.run]
+source = ["dolfinx_mcp"]
+omit = [
+    "*/tools/*",
+    "*/__main__.py",
+    "*/server.py",
+    "*/resources/*",
+    "*/prompts/*",
+    "*/utils.py",
+]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __debug__:",
 ]

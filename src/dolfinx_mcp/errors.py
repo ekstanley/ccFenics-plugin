@@ -156,5 +156,5 @@ def handle_tool_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
     # Preserve signature for FastMCP schema generation.
     # inspect.signature() is needed because plain functions don't have
     # __signature__ as an attribute -- Python generates it on the fly.
-    wrapper.__signature__ = inspect.signature(fn)
+    wrapper.__signature__ = inspect.signature(fn)  # type: ignore[attr-defined]
     return wrapper
