@@ -13,6 +13,7 @@ from hypothesis import strategies as st
 from dolfinx_mcp.session import (
     BCInfo,
     EntityMapInfo,
+    FormInfo,
     FunctionInfo,
     FunctionSpaceInfo,
     MeshInfo,
@@ -33,6 +34,8 @@ bc_names = st.sampled_from(["bc1", "bc2"])
 sol_names = st.sampled_from(["u1", "u2"])
 tag_names = st.sampled_from(["t1", "t2"])
 emap_names = st.sampled_from(["em1", "em2"])
+form_names = st.sampled_from(["F1", "F2"])
+ufl_symbol_names = st.sampled_from(["sym1", "sym2"])
 
 
 # ---------------------------------------------------------------------------
@@ -81,6 +84,16 @@ def remove_mesh_op(draw: st.DrawFn) -> tuple[str, str]:
 
 
 @st.composite
+def register_form_op(draw: st.DrawFn) -> tuple[str, str]:
+    return ("register_form", draw(form_names))
+
+
+@st.composite
+def register_ufl_symbol_op(draw: st.DrawFn) -> tuple[str, str]:
+    return ("register_ufl_symbol", draw(ufl_symbol_names))
+
+
+@st.composite
 def cleanup_op(draw: st.DrawFn) -> tuple[str]:
     _ = draw(st.none())  # Consume from draw to satisfy composite contract
     return ("cleanup",)
@@ -95,6 +108,8 @@ any_operation = st.one_of(
     register_solution_op(),
     register_tags_op(),
     register_entity_map_op(),
+    register_form_op(),
+    register_ufl_symbol_op(),
     remove_mesh_op(),
     cleanup_op(),
 )
@@ -199,6 +214,20 @@ def apply_operation(session: SessionState, op: tuple) -> None:  # noqa: C901
                     child_mesh=child,
                     dimension=1,
                 )
+
+        elif op[0] == "register_form":
+            name = op[1]
+            if session.function_spaces and name not in session.forms:
+                session.forms[name] = FormInfo(
+                    name=name,
+                    form=MagicMock(),
+                    ufl_form=MagicMock(),
+                )
+
+        elif op[0] == "register_ufl_symbol":
+            name = op[1]
+            if session.function_spaces and name not in session.ufl_symbols:
+                session.ufl_symbols[name] = MagicMock()
 
         elif op[0] == "remove_mesh":
             name = op[1]

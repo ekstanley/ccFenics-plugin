@@ -7,6 +7,8 @@ Properties tested:
   P4: Registry keys always match entry names (key == Info.name)
   P5: No operation introduces duplicate keys across registries
   P6: After removeMesh(m), no registry references m
+  P7: Forms cleared wholesale when spaces deleted (INV-8 cascade)
+  P8: Forms non-empty implies spaces non-empty (INV-8 invariant)
 """
 
 from __future__ import annotations
@@ -170,3 +172,49 @@ class TestRemoveMeshNoReference:
             for em in session.entity_maps.values():
                 assert em.parent_mesh != target
                 assert em.child_mesh != target
+
+
+class TestFormWholesaleClear:
+    """P7: Forms cleared wholesale when removeMesh deletes any space."""
+
+    @given(
+        ops=st.lists(any_operation, min_size=3, max_size=20),
+        target=mesh_names,
+    )
+    @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
+    def test_forms_cleared_when_spaces_deleted(
+        self, ops: list, target: str
+    ) -> None:
+        session = SessionState()
+        for op in ops:
+            apply_operation(session, op)
+
+        if target in session.meshes:
+            # Check if any spaces depend on this mesh
+            dep_spaces = [
+                sn for sn, si in session.function_spaces.items()
+                if si.mesh_name == target
+            ]
+            session.remove_mesh(target)
+
+            if dep_spaces:
+                # Forms and UFL symbols should be cleared wholesale
+                assert len(session.forms) == 0
+                assert len(session.ufl_symbols) == 0
+
+
+class TestFormSpaceInvariant:
+    """P8: Forms non-empty implies function_spaces non-empty (INV-8)."""
+
+    @given(ops=operation_sequence)
+    @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
+    def test_forms_require_spaces(self, ops: list) -> None:
+        session = SessionState()
+        for op in ops:
+            apply_operation(session, op)
+            # After every operation, check INV-8
+            if session.forms:
+                assert len(session.function_spaces) > 0, (
+                    f"INV-8 violated: forms={list(session.forms.keys())} "
+                    f"but function_spaces is empty"
+                )
