@@ -6,6 +6,87 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.6.2] - 2026-02-11
+
+### Fixed
+
+#### CI coverage gate discrepancy (Task 1)
+- Removed `--cov-fail-under=80` CLI override from `.github/workflows/ci.yml`
+- `pyproject.toml` `[tool.coverage.report].fail_under = 90` is now the single source of truth
+- Updated CLAUDE.md coverage command to match
+
+#### PreconditionError inconsistency in `interpolate()` (Task 2)
+- Changed mutual-exclusivity checks (`expression` vs `source_function`) from `DOLFINxAPIError`
+  to `PreconditionError`, matching `project()` and DbC conventions
+- Moved precondition checks BEFORE lazy imports and `session.get_function()` (eager validation)
+
+#### Deferred `_check_forbidden` security bug (Task 3)
+- `_make_boundary_fn` in problem.py deferred `_check_forbidden()` to lambda call-time,
+  meaning malicious expressions were not rejected at creation time
+- Fixed by extracting to `make_boundary_marker()` in `eval_helpers.py` which checks EAGERLY
+- All 4 expression evaluation sites now call `_check_forbidden()` eagerly
+
+#### Unnecessary `type: ignore` in server.py
+- Removed stale `# type: ignore[arg-type]` on `mcp.run()` call (pyright no longer needs it)
+
+### Added
+
+#### Shared expression evaluation module `eval_helpers.py` (Task 3)
+- New leaf module providing `eval_numpy_expression()` and `make_boundary_marker()`
+- Replaces ~120 lines of duplicated helpers across 4 tool files:
+  - `_eval_interp_expression` (interpolation.py)
+  - `_eval_exact_expression` (postprocess.py)
+  - `_eval_material_expression`, `_make_boundary_fn`, `_restricted_eval` (problem.py)
+  - `_make_marker_fn` (mesh.py)
+- `_eval_bc_expression` kept in problem.py (distinct: merges UFL namespace with numpy overrides)
+- Import DAG: `eval_helpers.py` imports only from `ufl_context.py` (leaf module)
+
+#### Enhanced CLAUDE.md (Task 4)
+- Added Error Selection Guide (12-row table mapping situations to error classes)
+- Added Expression Evaluation Patterns (numpy vs UFL symbolic contexts)
+- Added New Tool Checklist (13-step guide for adding tools)
+- Added Anti-Patterns section (6 common mistakes to avoid)
+- Updated Import DAG, Source Layout, and Testing sections
+- Added test fixture catalog (`session`, `mock_ctx`, `populated_session`, `mock_ctx_populated`)
+
+#### Claude commands (Task 5)
+- `.claude/commands/check-contracts.md` -- DbC compliance audit
+- `.claude/commands/add-tool.md` -- New tool scaffolding guide (accepts `$ARGUMENTS`)
+- `.claude/commands/run-tests.md` -- Test runner with coverage analysis
+
+#### MIT LICENSE file
+- Added standard MIT license
+
+### Changed
+- Version strings aligned in `README.md` (0.5.1 -> 0.6.1) and `providers.py` (0.1.0 -> 0.6.1)
+
+**v0.6.2 metrics:**
+- Ruff: 0 errors
+- Pyright: 0 errors, 1 warning (pre-existing FastMCP library type)
+- Tests: 296 passed, 3 skipped
+- Coverage: 90.15% (>= 90% threshold)
+- Net impact: +365/-164 lines across 14 files
+
+**Files added (5):**
+- `src/dolfinx_mcp/eval_helpers.py`
+- `.claude/commands/check-contracts.md`
+- `.claude/commands/add-tool.md`
+- `.claude/commands/run-tests.md`
+- `LICENSE`
+
+**Files modified (9):**
+- `.github/workflows/ci.yml`
+- `CLAUDE.md`
+- `README.md`
+- `src/dolfinx_mcp/server.py`
+- `src/dolfinx_mcp/resources/providers.py`
+- `src/dolfinx_mcp/tools/interpolation.py`
+- `src/dolfinx_mcp/tools/mesh.py`
+- `src/dolfinx_mcp/tools/postprocess.py`
+- `src/dolfinx_mcp/tools/problem.py`
+
+---
+
 ## [0.6.1] - 2026-02-07
 
 ### Fixed
@@ -1215,4 +1296,9 @@ SPEC: returns documented      query_point_values           Returns: docstring
 SPEC: returns documented      plot_solution                Returns: docstring
 SPEC: returns documented      interpolate                  Returns: docstring
 SPEC: returns documented      create_discrete_operator     Returns: docstring
+PRE: expression xor source   interpolate                  PreconditionError
+SEC: eager _check_forbidden  eval_numpy_expression        _check_forbidden (eager)
+SEC: eager _check_forbidden  make_boundary_marker         _check_forbidden (eager)
+SEC: eager _check_forbidden  _eval_bc_expression          _check_forbidden (eager)
+SEC: eager _check_forbidden  safe_evaluate                _check_forbidden (eager)
 ```
