@@ -46,7 +46,7 @@ def get_capabilities() -> dict[str, Any]:
         "export_formats": ["xdmf", "vtk", "vtkhdf"],
         "norm_types": ["L2", "H1"],
         "version": {
-            "dolfinx_mcp": "0.1.0",
+            "dolfinx_mcp": "0.6.1",
             "dolfinx_target": "0.10.0",
         },
     }

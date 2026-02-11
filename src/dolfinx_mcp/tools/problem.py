@@ -9,7 +9,6 @@ container (--network none, non-root, --rm) provides the security boundary.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from typing import Any
 
 from mcp.server.fastmcp import Context
@@ -22,6 +21,7 @@ from ..errors import (
     PreconditionError,
     handle_tool_errors,
 )
+from ..eval_helpers import eval_numpy_expression, make_boundary_marker
 from ..session import BCInfo, FormInfo, FunctionInfo, SessionState
 from ..ufl_context import build_namespace, safe_evaluate
 
@@ -33,32 +33,9 @@ def _get_session(ctx: Context) -> SessionState:
 
 
 # ---------------------------------------------------------------------------
-# Expression helpers (restricted-namespace evaluation for UFL/numpy)
+# BC expression helper (kept local -- distinct from eval_helpers.py because
+# it merges an external UFL namespace with numpy overrides)
 # ---------------------------------------------------------------------------
-
-
-def _make_boundary_fn(expr: str) -> Callable[[Any], Any]:
-    """Create a boundary marker callable from a string expression.
-
-    The expression should use x as a (3, N) array.
-    Example: "np.isclose(x[0], 0.0)" or "True".
-    """
-    import numpy as np
-
-    if expr.strip() == "True":
-        def marker(x):
-            return np.full(x.shape[1], True)
-        return marker
-
-    def marker(x):
-        # SECURITY: restricted namespace, Docker-sandboxed
-        ns = {"x": x, "np": np, "pi": np.pi, "__builtins__": {}}
-        result = _restricted_eval(expr, ns)
-        if isinstance(result, bool):
-            return np.full(x.shape[1], result)
-        return result
-
-    return marker
 
 
 def _eval_bc_expression(expr: str, x: Any, ns: dict[str, Any]) -> Any:
@@ -66,13 +43,19 @@ def _eval_bc_expression(expr: str, x: Any, ns: dict[str, Any]) -> Any:
 
     Overrides UFL math functions with numpy equivalents because BC
     interpolation operates on coordinate arrays, not symbolic UFL expressions.
+
+    SECURITY: _check_forbidden is called eagerly, __builtins__ is empty,
+    and the Docker container provides the final security boundary.
     """
     import numpy as np
+
+    from ..ufl_context import _check_forbidden
+
+    _check_forbidden(expr)
 
     local_ns = dict(ns)
     local_ns["x"] = x
     local_ns["np"] = np
-    # Override UFL math functions with numpy equivalents for array evaluation
     local_ns["sin"] = np.sin
     local_ns["cos"] = np.cos
     local_ns["exp"] = np.exp
@@ -83,46 +66,10 @@ def _eval_bc_expression(expr: str, x: Any, ns: dict[str, Any]) -> Any:
     local_ns["pi"] = np.pi
     local_ns["e"] = np.e
     local_ns["__builtins__"] = {}
-    result = _restricted_eval(expr, local_ns)
+    result = eval(expr, local_ns)  # noqa: S307 -- restricted namespace, Docker-sandboxed
     if isinstance(result, (int, float)):
         return np.full(x.shape[1], float(result))
     return result
-
-
-def _eval_material_expression(expr: str, x: Any, mesh: Any) -> Any:
-    """Evaluate a material property expression at coordinate arrays."""
-    import numpy as np
-
-    ns = {
-        "x": x,
-        "np": np,
-        "pi": np.pi,
-        "e": np.e,
-        "sin": np.sin,
-        "cos": np.cos,
-        "exp": np.exp,
-        "sqrt": np.sqrt,
-        "abs": np.abs,
-        "log": np.log,
-        "__builtins__": {},
-    }
-    result = _restricted_eval(expr, ns)
-    if isinstance(result, (int, float)):
-        return np.full(x.shape[1], float(result))
-    return result
-
-
-def _restricted_eval(expr_str: str, namespace: dict[str, Any]) -> Any:
-    """Evaluate expression in a restricted namespace.
-
-    SECURITY: This uses Python's eval intentionally. UFL is Python syntax
-    and has no separate parser. Mitigations:
-    1. __builtins__ set to empty dict (no system access)
-    2. Token blocklist in ufl_context._check_forbidden
-    3. Docker container isolation (--network none, non-root, --rm)
-    """
-    namespace.setdefault("__builtins__", {})
-    return eval(expr_str, namespace)  # noqa: S307
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +273,7 @@ async def apply_boundary_condition(
     # Locate boundary DOFs
     if boundary is not None:
         try:
-            boundary_fn = _make_boundary_fn(boundary)
+            boundary_fn = make_boundary_marker(boundary)
             fdim = mesh.topology.dim - 1
             boundary_facets = dolfinx.mesh.locate_entities_boundary(
                 mesh, fdim, boundary_fn
@@ -459,7 +406,7 @@ async def set_material_properties(
     func = dolfinx.fem.Function(V)
     try:
         func.interpolate(
-            lambda x: _eval_material_expression(value, x, mesh_info.mesh)
+            lambda x: eval_numpy_expression(value, x)
         )
     except DOLFINxMCPError:
         raise

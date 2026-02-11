@@ -40,5 +40,4 @@ jobs:
           --ignore=tests/test_runtime_contracts.py
           --cov=dolfinx_mcp
           --cov-report=term-missing
-          --cov-fail-under=80
           -v

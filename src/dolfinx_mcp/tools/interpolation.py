@@ -16,6 +16,7 @@ from ..errors import (
     SolverError,
     handle_tool_errors,
 )
+from ..eval_helpers import eval_numpy_expression
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -23,36 +24,6 @@ logger = logging.getLogger(__name__)
 
 def _get_session(ctx: Context) -> SessionState:
     return ctx.request_context.lifespan_context
-
-
-def _eval_interp_expression(expr: str, x: Any) -> Any:
-    """Evaluate an interpolation expression at coordinate arrays.
-
-    SECURITY: This uses Python's eval intentionally. DOLFINx interpolation
-    requires callable expressions. Mitigations:
-    1. __builtins__ set to empty dict (no system access)
-    2. Restricted namespace with only safe functions
-    3. Docker container isolation (--network none, non-root, --rm)
-    """
-    import numpy as np
-
-    ns = {
-        "x": x,
-        "np": np,
-        "pi": np.pi,
-        "e": np.e,
-        "sin": np.sin,
-        "cos": np.cos,
-        "exp": np.exp,
-        "sqrt": np.sqrt,
-        "abs": np.abs,
-        "log": np.log,
-        "__builtins__": {},
-    }
-    result = eval(expr, ns)  # noqa: S307 -- restricted namespace, Docker-sandboxed
-    if isinstance(result, (int, float)):
-        return np.full(x.shape[1], float(result))
-    return result
 
 
 @mcp.tool()
@@ -80,6 +51,16 @@ async def interpolate(
         max_value (float), and optionally interpolation_type ("same_mesh" or
         "cross_mesh"), source_mesh (str), and expression (str).
     """
+    # Preconditions: validate before imports or session access
+    if expression is not None and source_function is not None:
+        raise PreconditionError(
+            "Exactly one of 'expression' or 'source_function' must be provided, not both."
+        )
+    if expression is None and source_function is None:
+        raise PreconditionError(
+            "Exactly one of 'expression' or 'source_function' must be provided."
+        )
+
     import dolfinx.fem
     import numpy as np
 
@@ -89,24 +70,11 @@ async def interpolate(
     target_info = session.get_function(target)
     target_func = target_info.function
 
-    # Validate arguments
-    if expression is not None and source_function is not None:
-        raise DOLFINxAPIError(
-            "Cannot specify both 'expression' and 'source_function'.",
-            suggestion="Use either expression-based or function-based interpolation, not both.",
-        )
-
-    if expression is None and source_function is None:
-        raise DOLFINxAPIError(
-            "Must specify either 'expression' or 'source_function'.",
-            suggestion="Provide an expression string or source function name.",
-        )
-
     # Expression-based interpolation
     if expression is not None:
         try:
             target_func.interpolate(
-                lambda x: _eval_interp_expression(expression, x)
+                lambda x: eval_numpy_expression(expression, x)
             )
         except DOLFINxMCPError:
             raise

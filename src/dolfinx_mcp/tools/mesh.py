@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from typing import Any
 
 from mcp.server.fastmcp import Context
@@ -17,6 +16,7 @@ from ..errors import (
     PreconditionError,
     handle_tool_errors,
 )
+from ..eval_helpers import make_boundary_marker
 from ..session import EntityMapInfo, MeshInfo, MeshTagsInfo, SessionState
 
 logger = logging.getLogger(__name__)
@@ -344,26 +344,6 @@ async def create_mesh(
     return result
 
 
-def _make_marker_fn(condition: str) -> Callable[[Any], Any]:
-    """Create a boundary marker function from a condition string.
-
-    Args:
-        condition: Python expression using 'x' (coordinate array) and 'np' (numpy).
-                  Example: "x[0] < 1e-14" or "np.isclose(x[1], 1.0)"
-    """
-    import numpy as np
-
-    if condition.strip() == "True":
-        def marker(x):
-            return np.full(x.shape[1], True)
-        return marker
-
-    def marker(x):
-        ns = {"x": x, "np": np, "pi": np.pi, "__builtins__": {}}
-        return eval(condition, ns)  # noqa: S307
-    return marker
-
-
 @mcp.tool()
 @handle_tool_errors
 async def mark_boundaries(
@@ -428,7 +408,7 @@ async def mark_boundaries(
                     suggestion="Example: {'tag': 1, 'condition': 'x[0] < 1e-14'}",
                 )
 
-            marker_fn = _make_marker_fn(condition)
+            marker_fn = make_boundary_marker(condition)
             facet_indices = dolfinx.mesh.locate_entities_boundary(mesh, fdim, marker_fn)
 
             all_facet_indices.append(facet_indices)

@@ -26,6 +26,7 @@ from ..errors import (
     PreconditionError,
     handle_tool_errors,
 )
+from ..eval_helpers import eval_numpy_expression
 from ..session import SessionState
 
 logger = logging.getLogger(__name__)
@@ -85,33 +86,6 @@ def _validate_output_path(path: str) -> str:
     return resolved
 
 
-def _eval_exact_expression(expr: str, x: Any) -> Any:
-    """Evaluate an exact solution expression at coordinate arrays.
-
-    SECURITY: Restricted namespace, Docker-sandboxed.
-    """
-    import numpy as np
-
-    ns = {
-        "x": x,
-        "np": np,
-        "pi": np.pi,
-        "e": np.e,
-        "sin": np.sin,
-        "cos": np.cos,
-        "exp": np.exp,
-        "sqrt": np.sqrt,
-        "abs": np.abs,
-        "log": np.log,
-        "__builtins__": {},
-    }
-    ns.setdefault("__builtins__", {})
-    result = eval(expr, ns)  # noqa: S307 -- restricted namespace, Docker-sandboxed
-    if isinstance(result, (int, float)):
-        return np.full(x.shape[1], float(result))
-    return result
-
-
 @mcp.tool()
 @handle_tool_errors
 async def compute_error(
@@ -161,7 +135,7 @@ async def compute_error(
     u_exact = dolfinx.fem.Function(V)
     try:
         u_exact.interpolate(
-            lambda x: _eval_exact_expression(exact, x)
+            lambda x: eval_numpy_expression(exact, x)
         )
     except DOLFINxMCPError:
         raise
