@@ -1,6 +1,6 @@
 # DOLFINx MCP Server
 
-MCP server for FEniCSx/DOLFINx finite element computing. Version 0.8.0.
+MCP server for FEniCSx/DOLFINx finite element computing. Version 0.9.0.
 
 ## Quick Reference
 
@@ -177,12 +177,13 @@ Both call `_check_forbidden()` eagerly. Never bypass this.
 
 - Tests mock all DOLFINx imports (no Docker needed for unit tests)
 - `test_runtime_contracts.py` requires Docker container (28 tests)
-- `test_tutorial_workflows.py` requires Docker container (19 tests covering all DOLFINx tutorial chapters)
+- `test_tutorial_workflows.py` requires Docker container (26 tests covering all DOLFINx tutorial chapters + official demos)
   - T1 (2): Fundamentals — Poisson, membrane
   - T2 (3): Time-dependent/nonlinear — heat, elasticity, nonlinear Poisson
   - T3 (5): Boundary conditions — mixed BCs, multiple Dirichlet, subdomains, Robin, component-wise
   - T4 (4): Advanced — convergence study, Helmholtz, mixed Poisson, singular Poisson
   - T5 (5): Full coverage — Nitsche, hyperelasticity, electromagnetics (N1curl), AMR, Stokes (Taylor-Hood)
+  - T6 (7): Official demos — Allen-Cahn, biharmonic, DG Poisson, Lagrange variants, eigenvalues (x2), axisymmetric
 - `test_edge_case_contracts.py` requires Docker container (26 tests)
 - Hypothesis property tests use 500 examples per property for SessionState invariants
 - Coverage gate: 90% on core modules (tools/, server.py, resources/, prompts/, ufl_context.py are excluded)
@@ -195,7 +196,7 @@ All run on Python 3.12, Ubuntu latest.
 
 ## Plugin Layer (Claude Code Integration)
 
-The `.claude/` directory adds FEM domain intelligence on top of the 32 MCP tools.
+The `.claude/` directory adds FEM domain intelligence on top of the 33 MCP tools.
 
 ### Skills (`.claude/skills/`)
 
@@ -237,6 +238,7 @@ The `.claude/` directory adds FEM domain intelligence on top of the 32 MCP tools
 | `fem-workflow-submesh` | "submesh", "extract subdomain", "domain decomposition" |
 | `fem-workflow-mesh-quality` | "mesh quality", "element quality", "mesh statistics" |
 | `fem-workflow-discrete-ops` | "discrete gradient", "discrete curl", "operator matrix" |
+| `fem-workflow-axisymmetric` | "axisymmetric", "cylindrical coordinates", "r-z plane", "revolution" |
 
 ### Agents (`.claude/agents/`)
 

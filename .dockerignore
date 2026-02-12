@@ -1,0 +1,12 @@
+.git
+.github
+.claude
+.hypothesis
+.pytest_cache
+.ruff_cache
+.outline
+workspace
+firebase-debug.log
+*.md
+!README.md
+examples/

@@ -6,6 +6,55 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.9.0] - 2026-02-12
+
+### Added
+- Axisymmetric domains skill (`fem-workflow-axisymmetric`)
+- T6.7 Docker test for axisymmetric Poisson
+
+### Changed
+- Updated README tool count (31 -> 33), added Claude Code auto-discovery docs
+- Added CI/License/Python badges to README
+- Repository sanitation (`.gitignore` additions, removed tracked `firebase-debug.log`)
+- Added `.dockerignore` to reduce build context size
+- Aligned Jupyter extension version to 0.9.0
+- Updated CLAUDE.md and SessionStart hook for v0.9.0
+
+---
+
+## [0.8.0] - 2026-02-12
+
+### Added
+- SLEPc eigenvalue solver (`solve_eigenvalue` tool, 33rd tool)
+- DG operators: `jump`, `avg`, `cell_avg`, `facet_avg` in UFL namespace
+- Lagrange element variants parameter (`equispaced`, `gll_warped`, etc.)
+- 4 new skills: `fem-workflow-cahn-hilliard`, `fem-workflow-biharmonic`, `fem-workflow-dg-formulation`, `fem-workflow-eigenvalue`
+- T6 test group: 6 Docker tests for official demo coverage
+
+### Changed
+- Total tools: 32 -> 33
+- Total skills: 32 -> 36
+- Docker tests: 73 -> 79
+
+---
+
+## [0.7.0] - 2026-02-11
+
+### Added
+- Nonlinear solver (`solve_nonlinear` tool, 32nd tool)
+- Full DOLFINx tutorial coverage (26/26 topics)
+- 6 new skills (`fem-workflow-custom-newton`, `fem-workflow-convergence-rates`, `fem-workflow-singular-poisson`, `fem-workflow-mixed-poisson`, `fem-workflow-electromagnetics`, `fem-workflow-component-bc`)
+- T5 test group: 5 Docker tests for remaining tutorial chapters
+- `ds(tag)` subdomain data in UFL namespace
+- `split()` for mixed-space function decomposition
+- Nullspace support (`nullspace_mode` parameter on `solve`)
+
+### Changed
+- Total tools: 31 -> 32
+- Docker tests: 47 -> 73
+
+---
+
 ## [0.6.2] - 2026-02-11
 
 ### Fixed

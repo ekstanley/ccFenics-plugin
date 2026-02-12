@@ -1,10 +1,12 @@
 # dolfinx-mcp
 
+[![CI](https://github.com/estanley/ccFenics-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/estanley/ccFenics-plugin/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://python.org)
+
 MCP server for FEniCSx/DOLFINx finite element computing.
 
-**Version**: 0.6.2 | **License**: MIT | **Python**: >= 3.10 | **DOLFINx**: 0.10.0
+**Version**: 0.9.0 | **License**: MIT | **Python**: >= 3.10 | **DOLFINx**: 0.10.0
 
-Exposes 32 tools, 6 prompt templates, and 6 resources for mesh generation,
+Exposes 33 tools, 6 prompt templates, and 6 resources for mesh generation,
 function space creation, PDE solving, and post-processing through the
 [Model Context Protocol](https://modelcontextprotocol.io/). Runs inside a
 Docker container with the full DOLFINx/PETSc stack.
@@ -14,7 +16,7 @@ Docker container with the full DOLFINx/PETSc stack.
                (Claude, Cursor, ...)                      (dolfinx/dolfinx:stable)
               +---------------------+                    +-----------------------+
               |                     |    JSON-RPC         |  FastMCP Server       |
-              |  "Solve the 3D     | ---- stdio -------> |    31 Tool Handlers   |
+              |  "Solve the 3D     | ---- stdio -------> |    33 Tool Handlers   |
               |   Poisson equation" |    or HTTP          |    SessionState       |
               |                     | <------------------ |    /workspace output  |
               +---------------------+                    +-----------------------+
@@ -50,6 +52,17 @@ Add to your MCP client configuration (Claude Desktop, Cursor, VS Code, etc.):
   }
 }
 ```
+
+### Claude Code Users
+
+This repo includes `.mcp.json` for automatic MCP server discovery.
+Just open Claude Code in the repo directory after building the Docker image:
+
+1. `docker build -t dolfinx-mcp .`
+2. Open Claude Code: `claude` (from the repo root)
+3. The server auto-connects -- start asking FEM questions
+
+No manual MCP configuration needed.
 
 ### 3. Use
 
@@ -87,7 +100,7 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 
 ---
 
-## Tools (31)
+## Tools (33)
 
 ### Mesh Operations (9)
 
@@ -118,12 +131,14 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 | `define_variational_form` | Bilinear and linear forms via UFL expressions |
 | `apply_boundary_condition` | Dirichlet boundary conditions (value + locator) |
 
-### Solvers (3)
+### Solvers (5)
 
 | Tool | Description |
 |------|-------------|
 | `solve` | Direct (LU, MUMPS) or iterative (CG, GMRES) with preconditioners |
 | `solve_time_dependent` | Time stepping: backward/forward Euler, Crank-Nicolson |
+| `solve_nonlinear` | Newton solver (SNES) for nonlinear PDEs |
+| `solve_eigenvalue` | Generalized eigenvalue problems via SLEPc |
 | `get_solver_diagnostics` | Convergence info, iterations, residual norms |
 
 ### Post-processing (6)
@@ -229,7 +244,7 @@ Use IPython magics inside JupyterLab:
 
 ## Design-by-Contract
 
-All 31 tools enforce runtime contracts:
+All 33 tools enforce runtime contracts:
 
 - **Preconditions**: Input validation (parameter types, ranges, existence checks)
 - **Postconditions**: Output validation (return structure, value constraints)
@@ -299,7 +314,7 @@ pytest tests/ --ignore=tests/test_runtime_contracts.py -v
 docker build -t dolfinx-mcp .
 pytest tests/test_runtime_contracts.py -v
 
-# Production readiness suite (all 31 tools via MCP protocol)
+# Production readiness suite (all 33 tools via MCP protocol)
 python examples/production_readiness.py --verbose
 
 # Lint
@@ -313,13 +328,13 @@ src/dolfinx_mcp/
     server.py              Entry point
     _app.py                FastMCP instance + lifespan
     session.py             SessionState (8 registries, 7 invariants)
-    errors.py              12 error classes + decorator
+    errors.py              13 error classes + decorator
     ufl_context.py         Restricted UFL expression evaluation
     tools/
         mesh.py            9 mesh tools
         spaces.py          2 function space tools
         problem.py         3 problem definition tools
-        solver.py          3 solver tools
+        solver.py          5 solver tools
         postprocess.py     6 post-processing tools
         interpolation.py   3 interpolation tools
         session_mgmt.py    5 session management tools
@@ -328,7 +343,7 @@ src/dolfinx_mcp/
 
 src/dolfinx_mcp_jupyter/   JupyterLab extension (5 IPython magics)
 
-tests/                     12 test files, 238 tests
+tests/                     14 test files, 341+ tests
 examples/                  Production readiness suite + 3D Poisson notebook
 .outline/proofs/           Lean 4 formal verification (20 theorems)
 ```

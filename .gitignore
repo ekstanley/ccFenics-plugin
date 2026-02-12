@@ -28,9 +28,17 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+.hypothesis/
 
 # Docker
 .docker/
 
+# Linting / caching
+.ruff_cache/
+
 # MCP / ODIN artifacts
 .outline/
+workspace/
+
+# Debug logs
+*-debug.log

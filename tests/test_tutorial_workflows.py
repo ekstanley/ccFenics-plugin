@@ -15,8 +15,9 @@ Groups:
             singular Poisson)
     T5 (5): Part 5 -- Remaining Tutorial Coverage (Nitsche, hyperelasticity,
             electromagnetics, adaptive refinement, Stokes flow)
-    T6 (6): Part 6 -- Official Demo Coverage (Allen-Cahn, biharmonic, DG Poisson,
-            Lagrange variants, Laplacian eigenvalue, EM waveguide eigenvalue)
+    T6 (7): Part 6 -- Official Demo Coverage (Allen-Cahn, biharmonic, DG Poisson,
+            Lagrange variants, Laplacian eigenvalue, EM waveguide eigenvalue,
+            axisymmetric Poisson)
 
 All gaps resolved in v0.7.0:
     G1: ds(tag) subdomain data -- build_namespace now attaches subdomain_data from mesh_tags
@@ -26,6 +27,9 @@ All gaps resolved in v0.7.0:
 Official demo gaps closed in v0.8.0:
     DG operators (jump, avg), Lagrange element variants, SLEPc eigenvalue solver,
     Cahn-Hilliard/biharmonic skills.
+
+v0.9.0 additions:
+    Axisymmetric domains skill + T6.7 test.
 """
 
 from __future__ import annotations
@@ -1119,7 +1123,7 @@ class TestT5RemainingTutorialCoverage:
 
 
 class TestT6OfficialDemoCoverage:
-    """Tests for official DOLFINx demo capabilities added in v0.8.0.
+    """Tests for official DOLFINx demo capabilities added in v0.8.0+.
 
     T6.1: Allen-Cahn steady-state (nonlinear phase-field proxy)
     T6.2: Biharmonic mixed formulation (fourth-order PDE)
@@ -1127,6 +1131,7 @@ class TestT6OfficialDemoCoverage:
     T6.4: Lagrange GLL variant (element variant parameter)
     T6.5: Laplacian eigenvalue (SLEPc EPS solver)
     T6.6: EM waveguide eigenvalue (Nedelec curl-curl)
+    T6.7: Axisymmetric Poisson (radial weighting, v0.9.0)
     """
 
     @pytest.mark.asyncio
@@ -1367,5 +1372,69 @@ class TestT6OfficialDemoCoverage:
             assert ev["real"] >= -1e-10, (
                 f"Eigenvalue {ev['index']} has negative real part: {ev['real']}"
             )
+
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_t6_7_axisymmetric_poisson(self, session, ctx):
+        """Axisymmetric Poisson: radially weighted weak form on r-z domain.
+
+        Solves -1/r d/dr(r du/dr) - d^2u/dz^2 = f in axisymmetric coordinates.
+        The weak form multiplies all integrands by x[0] (the radial coordinate r).
+
+        Uses [0, 1] x [0, 1] rectangle. At r=0 (left edge) the x[0] weighting
+        naturally enforces the symmetry condition du/dr=0; homogeneous Dirichlet
+        BCs are applied on all boundaries.
+        """
+        from dolfinx_mcp.tools.mesh import create_mesh
+        from dolfinx_mcp.tools.postprocess import evaluate_solution
+        from dolfinx_mcp.tools.problem import (
+            apply_boundary_condition,
+            define_variational_form,
+            set_material_properties,
+        )
+        from dolfinx_mcp.tools.solver import solve
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        # r-z cross-section: r in [0, 1], z in [0, 1]
+        await create_mesh(
+            name="mesh", shape="rectangle", nx=16, ny=16,
+            dimensions={"width": 1.0, "height": 1.0}, ctx=ctx,
+        )
+        await create_function_space(
+            name="V", family="Lagrange", degree=1, ctx=ctx,
+        )
+
+        # Uniform source
+        await set_material_properties(
+            name="f", value="1.0 + 0*x[0]", ctx=ctx,
+        )
+
+        # Axisymmetric weak form: multiply by x[0] (= r)
+        await define_variational_form(
+            bilinear="x[0] * inner(grad(u), grad(v)) * dx",
+            linear="x[0] * f * v * dx",
+            ctx=ctx,
+        )
+
+        # u = 0 on all boundaries
+        await apply_boundary_condition(value=0.0, boundary="True", ctx=ctx)
+
+        result = await solve(solver_type="direct", ctx=ctx)
+        assert "error" not in result
+        assert result["converged"] is True
+        assert result["solution_norm_L2"] > 0
+        assert math.isfinite(result["solution_norm_L2"])
+
+        # Solution should be positive in the interior (Poisson with positive f)
+        eval_result = await evaluate_solution(
+            points=[[0.5, 0.5]], ctx=ctx,
+        )
+        assert "error" not in eval_result
+        center_val = eval_result["evaluations"][0]["value"]
+        if isinstance(center_val, list):
+            center_val = center_val[0]
+        assert center_val > 0, f"Expected positive solution in interior, got {center_val}"
+        assert math.isfinite(center_val)
 
         session.check_invariants()
