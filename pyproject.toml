@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dolfinx-mcp"
-version = "0.6.2"
+version = "0.7.0"
 description = "MCP server for FEniCSx/DOLFINx finite element computing"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -89,6 +89,8 @@ omit = [
     "*/resources/*",
     "*/prompts/*",
     "*/utils.py",
+    "*/eval_helpers.py",
+    "*/ufl_context.py",
 ]
 
 [tool.coverage.report]

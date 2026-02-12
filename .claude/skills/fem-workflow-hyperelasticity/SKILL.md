@@ -6,7 +6,7 @@ description: |
   nonlinear elasticity, finite strain, or deformation gradient.
 ---
 
-# Hyperelasticity Workflow (Tutorial Ch2.6)
+# Hyperelasticity Workflow (Tutorial Ch2.7)
 
 Solve a **geometrically nonlinear** elasticity problem using a stored energy function and Newton's method.
 

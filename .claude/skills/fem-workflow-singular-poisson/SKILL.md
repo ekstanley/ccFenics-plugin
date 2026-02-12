@@ -6,7 +6,7 @@ description: |
   compatibility condition, or constant mode removal.
 ---
 
-# Singular Poisson Workflow (Tutorial Ch2.9)
+# Singular Poisson Workflow (Tutorial Ch2.3)
 
 Solve: **-div(grad(u)) = f** with **pure Neumann BCs** (du/dn = g on all boundaries).
 

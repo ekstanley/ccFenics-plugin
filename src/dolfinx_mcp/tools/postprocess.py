@@ -394,6 +394,10 @@ async def compute_functionals(
     # Precondition: expressions must be non-empty
     if not expressions:
         raise PreconditionError("expressions list must be non-empty.")
+    # P3: each expression must be a non-empty string
+    for i, expr in enumerate(expressions):
+        if not isinstance(expr, str) or not expr.strip():
+            raise PreconditionError(f"expressions[{i}] must be a non-empty string.")
 
     import dolfinx.fem
 

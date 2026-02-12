@@ -6,7 +6,7 @@ description: |
   wave equation, impedance BCs, or scattering problems.
 ---
 
-# Helmholtz Equation Workflow (Tutorial Ch2.7)
+# Helmholtz Equation Workflow (Tutorial Ch2.8)
 
 Solve: **nabla^2 p + k^2 p = 0** in Omega, with impedance boundary conditions.
 

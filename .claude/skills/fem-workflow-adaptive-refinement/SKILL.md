@@ -6,7 +6,7 @@ description: |
   local refinement, mesh adaptivity, or solve-estimate-mark-refine loops.
 ---
 
-# Adaptive Mesh Refinement Workflow (Tutorial Ch2.8)
+# Adaptive Mesh Refinement Workflow (Tutorial Ch2.9)
 
 Automatically refine the mesh where the error is largest, using a **solve-estimate-mark-refine** loop.
 

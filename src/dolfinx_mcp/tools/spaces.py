@@ -58,6 +58,14 @@ async def create_function_space(
         raise PreconditionError(f"degree must be >= 0, got {degree}.")
     if degree > 10:
         raise PreconditionError(f"degree {degree} exceeds sanity limit of 10.")
+    # PS-6: validate shape components early (before dolfinx call)
+    if shape is not None:
+        if not shape:
+            raise PreconditionError("shape must be non-empty if provided.")
+        if not all(isinstance(d, int) and d > 0 for d in shape):
+            raise PreconditionError(
+                f"All shape dimensions must be positive integers, got {shape}.",
+            )
 
     import dolfinx.fem
 

@@ -108,12 +108,9 @@ async def define_variational_form(
     if not linear or not linear.strip():
         raise PreconditionError("linear form expression must be non-empty.")
 
-    import dolfinx.fem
-    import ufl
-
     session = _get_session(ctx)
 
-    # Resolve function spaces
+    # Resolve function spaces (before lazy imports for host-side preconditions)
     if trial_space is not None:
         V_trial_info = session.get_space(trial_space)
     else:
@@ -122,6 +119,17 @@ async def define_variational_form(
     V_test_info = (
         session.get_space(test_space) if test_space is not None else V_trial_info
     )
+
+    # PS-5: trial and test spaces must be on the same mesh
+    if V_trial_info.mesh_name != V_test_info.mesh_name:
+        raise PreconditionError(
+            f"Trial space '{V_trial_info.name}' is on mesh '{V_trial_info.mesh_name}' "
+            f"but test space '{V_test_info.name}' is on mesh '{V_test_info.mesh_name}'.",
+            suggestion="Both trial and test spaces must be on the same mesh.",
+        )
+
+    import dolfinx.fem
+    import ufl
 
     V_trial = V_trial_info.space
     V_test = V_test_info.space
@@ -225,19 +233,50 @@ async def apply_boundary_condition(
     if sub_space is not None and sub_space < 0:
         raise PreconditionError(f"sub_space must be >= 0, got {sub_space}.")
 
-    import dolfinx.fem
-    import dolfinx.mesh
-    import numpy as np
+    # PS-1: BC float value must be finite
+    if isinstance(value, (int, float)):
+        import math
+        if not math.isfinite(value):
+            raise PreconditionError(
+                f"BC value must be finite, got {value}.",
+                suggestion="Provide a finite numeric value.",
+            )
+
+    # PS-3: boundary and boundary_tag are mutually exclusive
+    if boundary is not None and boundary_tag is not None:
+        raise PreconditionError(
+            "Cannot specify both 'boundary' (geometric) and 'boundary_tag' (tagged). Use one.",
+            suggestion="Use 'boundary' for geometric or 'boundary_tag' for tagged boundaries.",
+        )
 
     session = _get_session(ctx)
 
-    # Resolve function space
+    # Resolve function space (no dolfinx import needed)
     if function_space is not None:
         fs_info = session.get_space(function_space)
     else:
         fs_info = session.get_only_space()
 
     V = fs_info.space
+
+    # Precondition: sub_space must be within range
+    if sub_space is not None:
+        num_subs = getattr(V, "num_sub_spaces", 0)
+        if num_subs == 0:
+            raise PreconditionError(
+                f"sub_space={sub_space} specified but space '{fs_info.name}' has no sub-spaces.",
+                suggestion="Remove sub_space parameter, or use a mixed/vector function space.",
+            )
+        if sub_space >= num_subs:
+            raise PreconditionError(
+                f"sub_space={sub_space} out of range. Space '{fs_info.name}' has "
+                f"{num_subs} sub-spaces (0..{num_subs - 1}).",
+            )
+
+    import dolfinx.fem
+    import dolfinx.mesh
+    import numpy as np
+
     mesh = session.get_mesh(fs_info.mesh_name).mesh
 
     # Determine the space for DOF location (may be a sub-space)
@@ -249,8 +288,16 @@ async def apply_boundary_condition(
         V_dof = V
 
     # Create the BC value
-    if isinstance(value, (int, float)):
+    # When sub_space is set, DOF location returns a pair (parent, collapsed);
+    # the Constant overload of dirichletbc expects a plain ndarray.
+    # So for sub_space + scalar, we interpolate into a Function instead.
+    if isinstance(value, (int, float)) and sub_space is None:
         bc_value = dolfinx.fem.Constant(mesh, float(value))
+    elif isinstance(value, (int, float)):
+        # sub_space is set -- use Function for compatibility with dofs pair
+        bc_func = dolfinx.fem.Function(V_collapse)
+        bc_func.x.array[:] = float(value)
+        bc_value = bc_func
     else:
         # Expression string -- interpolate into function
         ns = build_namespace(session, fs_info.mesh_name)
@@ -261,6 +308,12 @@ async def apply_boundary_condition(
             bc_func.interpolate(
                 lambda x: _eval_bc_expression(value, x, ns)
             )
+            # PS-2: interpolated BC must be finite
+            if not np.isfinite(bc_func.x.array).all():
+                raise PostconditionError(
+                    "BC expression produced non-finite values after interpolation.",
+                    suggestion="Check expression produces finite values over the boundary.",
+                )
             bc_value = bc_func
         except DOLFINxMCPError:
             raise
@@ -302,10 +355,13 @@ async def apply_boundary_condition(
         )
 
     # Create DirichletBC
-    # DOLFINx 0.10+: Function overload takes (func, dofs) without V;
+    # DOLFINx 0.10+: Function overload takes (func, dofs) without V for
+    # full-space BCs, or (func, dofs_pair, V_sub) for sub-space BCs;
     # Constant overload takes (constant, dofs, V).
     try:
-        if isinstance(bc_value, dolfinx.fem.Function):
+        if isinstance(bc_value, dolfinx.fem.Function) and sub_space is not None:
+            bc = dolfinx.fem.dirichletbc(bc_value, dofs, V_dof)
+        elif isinstance(bc_value, dolfinx.fem.Function):
             bc = dolfinx.fem.dirichletbc(bc_value, dofs)
         elif sub_space is not None:
             bc = dolfinx.fem.dirichletbc(bc_value, dofs, V_dof)
@@ -380,6 +436,14 @@ async def set_material_properties(
             f"Name '{name}' is a reserved UFL symbol.",
             suggestion=f"Choose a different name. Reserved: {sorted(_RESERVED_UFL_NAMES)[:10]}...",
         )
+
+    if isinstance(value, (int, float)):
+        import math
+        if not math.isfinite(value):
+            raise PreconditionError(
+                f"Material property value must be finite, got {value}.",
+                suggestion="Provide a finite numeric value.",
+            )
 
     import dolfinx.fem
     import numpy as np

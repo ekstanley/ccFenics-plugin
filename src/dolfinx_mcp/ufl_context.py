@@ -129,14 +129,46 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
         "Min": ufl.min_value,
         "max_value": ufl.max_value,
         "min_value": ufl.min_value,
-        # UFL measures
+        # UFL measures -- attach subdomain_data if boundary/interior tags exist
         "dx": ufl.dx,
-        "ds": ufl.ds,
-        "dS": ufl.dS,
+    }
+
+    # Look up facet tags for this mesh to enable ds(tag) and dS(tag)
+    mesh_name_resolved = mesh_name or session.active_mesh
+    boundary_tags = None
+    interior_tags = None
+    fdim = mesh.topology.dim - 1
+    for _tag_name, tag_info in session.mesh_tags.items():
+        if tag_info.mesh_name == mesh_name_resolved and tag_info.dimension == fdim:
+            boundary_tags = tag_info.tags
+            break
+    # Interior facets (dimension == tdim - 1, but separate from boundary)
+    for _tag_name, tag_info in session.mesh_tags.items():
+        if (
+            tag_info.mesh_name == mesh_name_resolved
+            and tag_info.dimension == fdim
+            and tag_info.name.startswith("interior_")
+        ):
+            interior_tags = tag_info.tags
+            break
+
+    if boundary_tags is not None:
+        ns["ds"] = ufl.Measure("ds", domain=mesh, subdomain_data=boundary_tags)
+    else:
+        ns["ds"] = ufl.ds
+
+    if interior_tags is not None:
+        ns["dS"] = ufl.Measure("dS", domain=mesh, subdomain_data=interior_tags)
+    else:
+        ns["dS"] = ufl.dS
+
+    ns.update({
         # UFL special forms
         "Dx": ufl.Dx,
         "variable": ufl.variable,
         "diff": ufl.diff,
+        "split": ufl.split,
+        "as_ufl": ufl.as_ufl,
         # UFL function constructors
         "TrialFunction": ufl.TrialFunction,
         "TestFunction": ufl.TestFunction,
@@ -153,7 +185,7 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
         "pi": math.pi,
         "e": math.e,
         "np": np,
-    }
+    })
 
     # Inject session-registered UFL symbols (materials, coefficients)
     ns.update(session.ufl_symbols)

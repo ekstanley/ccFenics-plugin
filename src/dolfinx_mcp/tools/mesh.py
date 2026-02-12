@@ -377,6 +377,15 @@ async def mark_boundaries(
         if not m.get("condition"):
             raise PreconditionError("Each marker must have a non-empty 'condition' string.")
 
+    # Precondition: no duplicate tag values
+    tags = [m["tag"] for m in markers]
+    if len(tags) != len(set(tags)):
+        dupes = sorted({t for t in tags if tags.count(t) > 1})
+        raise PreconditionError(
+            f"Duplicate tag values found: {dupes}. Each marker must have a unique tag.",
+            suggestion="Assign distinct tag integers to each boundary region.",
+        )
+
     import dolfinx.mesh
     import numpy as np
 
@@ -430,7 +439,7 @@ async def mark_boundaries(
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to create boundary markers: {exc}") from exc
 
-    # Store in session
+    # M5: postcondition before session store
     tags_info = MeshTagsInfo(
         name=name,
         tags=meshtags,
@@ -438,7 +447,6 @@ async def mark_boundaries(
         dimension=fdim,
         unique_tags=[int(t) for t in np.unique(tag_values)],
     )
-    session.mesh_tags[name] = tags_info
 
     # Postcondition: boundary marking must produce at least one tag
     if not tags_info.unique_tags:
@@ -446,6 +454,9 @@ async def mark_boundaries(
             "Boundary marking produced no tagged facets.",
             suggestion="Check boundary conditions match the mesh geometry.",
         )
+
+    # Store in session (after postcondition verified)
+    session.mesh_tags[name] = tags_info
 
     # Count tags
     tag_counts = {}
@@ -831,9 +842,6 @@ async def manage_mesh_tags(
             f"action must be 'create' or 'query', got '{action}'."
         )
 
-    import dolfinx.mesh
-    import numpy as np
-
     session = _get_session(ctx)
 
     if action == "create":
@@ -856,6 +864,19 @@ async def manage_mesh_tags(
             )
 
         mesh_info = session.get_mesh(mesh_name)
+
+        # Precondition: dimension must be valid for the mesh topology
+        if dimension < 0:
+            raise PreconditionError(f"dimension must be >= 0, got {dimension}.")
+        if dimension > mesh_info.tdim:
+            raise PreconditionError(
+                f"dimension={dimension} exceeds mesh topological dimension ({mesh_info.tdim}).",
+                suggestion=f"Use dimension 0..{mesh_info.tdim}.",
+            )
+
+        import dolfinx.mesh
+        import numpy as np
+
         mesh = mesh_info.mesh
 
         # Build entity-tag arrays
@@ -886,7 +907,7 @@ async def manage_mesh_tags(
         except Exception as exc:
             raise DOLFINxAPIError(f"Failed to create mesh tags: {exc}") from exc
 
-        # Store in session
+        # M6: postcondition before session store
         unique_tags = np.unique(tag_values).tolist()
         tags_info = MeshTagsInfo(
             name=name,
@@ -895,7 +916,6 @@ async def manage_mesh_tags(
             dimension=dimension,
             unique_tags=[int(t) for t in unique_tags],
         )
-        session.mesh_tags[name] = tags_info
 
         # Postcondition: tag creation must produce at least one tag
         if not tags_info.unique_tags:
@@ -903,6 +923,9 @@ async def manage_mesh_tags(
                 "Mesh tag creation produced no tagged entities.",
                 suggestion="Check entity indices and tag values are valid.",
             )
+
+        # Store in session (after postcondition verified)
+        session.mesh_tags[name] = tags_info
 
         # Count tags
         tag_counts = {}
@@ -923,6 +946,8 @@ async def manage_mesh_tags(
         }
 
     elif action == "query":
+        import numpy as np
+
         query_name = tags_name or name
         tags_info = session.get_mesh_tags(query_name)
         tags = tags_info.tags

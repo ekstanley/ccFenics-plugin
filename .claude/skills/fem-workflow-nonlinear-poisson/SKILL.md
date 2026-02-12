@@ -6,7 +6,7 @@ description: |
   q(u)*grad(u), or coefficient-dependent diffusion.
 ---
 
-# Nonlinear Poisson Workflow (Tutorial Ch2.3)
+# Nonlinear Poisson Workflow (Tutorial Ch2.4)
 
 Solve: **-div(q(u) * grad(u)) = f** where `q(u) = 1 + u^2` (or any nonlinear function of u).
 

@@ -3,7 +3,7 @@
     "SessionStart": [
       {
         "type": "command",
-        "command": "echo '## FEM Context\nDOLFINx MCP server provides 32 tools for finite element computing.\nSecurity: All UFL expressions pass through _check_forbidden() token blocklist.\nWorkflow: mesh -> space -> material -> form -> BC -> solve -> postprocess.\nAvailable element families: Lagrange (P1-P4), DG, Nedelec, Raviart-Thomas, BDM.\nMixed spaces: Use Taylor-Hood (P2/P1) for Stokes, ensure inf-sup stability.\nNonlinear: Use solve_nonlinear for Newton-method PDEs (residual form + unknown function).\nTutorial coverage: 21 chapters from jsdokken.com/dolfinx-tutorial via /tutorial-chapter command.'"
+        "command": "echo '## FEM Context\nDOLFINx MCP server provides 32 tools for finite element computing.\nSecurity: All UFL expressions pass through _check_forbidden() token blocklist.\nWorkflow: mesh -> space -> material -> form -> BC -> solve -> postprocess.\nAvailable element families: Lagrange (P1-P4), DG, Nedelec, Raviart-Thomas, BDM.\nMixed spaces: Use Taylor-Hood (P2/P1) for Stokes, ensure inf-sup stability.\nNonlinear: Use solve_nonlinear for Newton-method PDEs (residual form + unknown function).\nTutorial coverage: 23 topics across 4 chapters from jsdokken.com/dolfinx-tutorial via /tutorial-chapter command.'"
       }
     ],
     "PreToolUse": [

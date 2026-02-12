@@ -6,7 +6,7 @@ description: |
   cylinder flow, incompressible flow, or Reynolds number.
 ---
 
-# Navier-Stokes Workflow (Tutorial Ch2.5)
+# Navier-Stokes Workflow (Tutorial Ch2.6)
 
 Solve the incompressible Navier-Stokes equations using the **Incremental Pressure Correction Scheme (IPCS)**.
 

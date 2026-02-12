@@ -27,6 +27,9 @@ def _get_session(ctx: Context) -> SessionState:
     return ctx.request_context.lifespan_context
 
 
+_VALID_NULLSPACE_MODES = frozenset({"constant", "rigid_body"})
+
+
 @mcp.tool()
 @handle_tool_errors
 async def solve(
@@ -38,6 +41,7 @@ async def solve(
     max_iter: int = 1000,
     petsc_options: dict[str, Any] | None = None,
     solution_name: str = "u_h",
+    nullspace_mode: str | None = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
     """Solve the current variational problem.
@@ -56,6 +60,10 @@ async def solve(
         max_iter: Maximum iterations (iterative only).
         petsc_options: Additional PETSc options as key-value pairs.
         solution_name: Name for the solution function.
+        nullspace_mode: Nullspace handling for singular systems.
+            "constant" — attach a constant nullspace (pure Neumann scalar problems).
+            "rigid_body" — attach rigid body modes (pure Neumann elasticity).
+            None — no nullspace (default).
 
     Returns:
         dict with converged (bool), converged_reason (int), iterations (int),
@@ -67,6 +75,23 @@ async def solve(
         raise PreconditionError(
             f"solver_type must be 'direct' or 'iterative', got '{solver_type}'."
         )
+    # Precondition: validate nullspace_mode
+    if nullspace_mode is not None and nullspace_mode not in _VALID_NULLSPACE_MODES:
+        raise PreconditionError(
+            f"nullspace_mode must be one of {sorted(_VALID_NULLSPACE_MODES)} or None, "
+            f"got '{nullspace_mode}'."
+        )
+    # S1: solution_name must be non-empty
+    if not solution_name or not solution_name.strip():
+        raise PreconditionError("solution_name must be non-empty.")
+    # S2: validate iterative solver parameters
+    if solver_type == "iterative":
+        if rtol <= 0:
+            raise PreconditionError(f"rtol must be > 0, got {rtol}.")
+        if atol <= 0:
+            raise PreconditionError(f"atol must be > 0, got {atol}.")
+        if max_iter <= 0:
+            raise PreconditionError(f"max_iter must be > 0, got {max_iter}.")
 
     import dolfinx.fem.petsc
     import numpy as np
@@ -90,6 +115,25 @@ async def solve(
             a_form, L_form, bcs=bcs,
             petsc_options=opts, petsc_options_prefix="solve",
         )
+
+        # Attach nullspace if requested (singular systems like pure Neumann)
+        if nullspace_mode is not None:
+            from petsc4py import PETSc
+
+            A = problem.A
+            if nullspace_mode == "constant":
+                nullspace = PETSc.NullSpace().create(constant=True)
+            elif nullspace_mode == "rigid_body":
+                # Build rigid body modes for vector problems
+                V = list(session.function_spaces.values())[-1].space
+                rb_vectors = _build_rigid_body_modes(V)
+                nullspace = PETSc.NullSpace().create(
+                    constant=False, vectors=rb_vectors,
+                )
+            A.setNullSpace(nullspace)
+            nullspace.remove(problem.b)
+            logger.info("Attached %s nullspace to solver matrix", nullspace_mode)
+
         uh = problem.solve()
     except DOLFINxMCPError:
         raise
@@ -213,6 +257,73 @@ def _build_petsc_opts(
     return opts
 
 
+def _build_rigid_body_modes(V: Any) -> list[Any]:
+    """Build rigid body mode vectors for a vector function space.
+
+    Used for elasticity nullspace (3 modes in 2D: 2 translations + 1 rotation;
+    6 modes in 3D: 3 translations + 3 rotations).
+
+    Args:
+        V: dolfinx FunctionSpace (vector-valued)
+
+    Returns:
+        List of PETSc Vec objects representing rigid body modes
+    """
+    import dolfinx.fem
+    from petsc4py import PETSc
+
+    gdim = V.mesh.geometry.dim
+    dofs = V.dofmap.index_map.size_local * V.dofmap.index_map_bs
+
+    def _create_vec(func: dolfinx.fem.Function) -> PETSc.Vec:
+        vec = func.x.petsc_vec.copy()
+        vec.array[:] = func.x.array[:]
+        norm = vec.norm()
+        if norm > 0:
+            vec.scale(1.0 / norm)
+        return vec
+
+    modes = []
+    # Translation modes
+    for i in range(gdim):
+        f = dolfinx.fem.Function(V)
+        f.x.array[:] = 0.0
+        bs = V.dofmap.index_map_bs
+        f.x.array[i::bs] = 1.0
+        modes.append(_create_vec(f))
+
+    # Rotation modes
+    x = V.tabulate_dof_coordinates()[:dofs // V.dofmap.index_map_bs]
+    if gdim == 2:
+        # Single rotation in 2D: (-y, x)
+        f = dolfinx.fem.Function(V)
+        f.x.array[:] = 0.0
+        bs = V.dofmap.index_map_bs
+        f.x.array[0::bs] = -x[:, 1]
+        f.x.array[1::bs] = x[:, 0]
+        modes.append(_create_vec(f))
+    elif gdim == 3:
+        for axis in range(3):
+            f = dolfinx.fem.Function(V)
+            f.x.array[:] = 0.0
+            bs = V.dofmap.index_map_bs
+            i, j = (axis + 1) % 3, (axis + 2) % 3
+            f.x.array[i::bs] = -x[:, j]
+            f.x.array[j::bs] = x[:, i]
+            modes.append(_create_vec(f))
+
+    # Orthogonalize via Gram-Schmidt
+    for i in range(len(modes)):
+        for j in range(i):
+            dot = modes[i].dot(modes[j])
+            modes[i].axpy(-dot, modes[j])
+        norm = modes[i].norm()
+        if norm > 0:
+            modes[i].scale(1.0 / norm)
+
+    return modes
+
+
 @mcp.tool()
 @handle_tool_errors
 async def solve_time_dependent(
@@ -248,7 +359,16 @@ async def solve_time_dependent(
     Returns:
         Dictionary with steps_completed, final_time, snapshots, solution_name
     """
+    import math
+
     # Preconditions
+    # S3: all time parameters must be finite
+    if not math.isfinite(dt):
+        raise PreconditionError(f"dt must be finite, got {dt}.")
+    if not math.isfinite(t_end):
+        raise PreconditionError(f"t_end must be finite, got {t_end}.")
+    if not math.isfinite(t_start):
+        raise PreconditionError(f"t_start must be finite, got {t_start}.")
     if dt <= 0:
         raise PreconditionError(f"dt must be > 0, got {dt}.")
     if t_end <= t_start:
@@ -256,6 +376,26 @@ async def solve_time_dependent(
     if time_scheme != "backward_euler":
         raise PreconditionError(
             f"time_scheme must be 'backward_euler', got '{time_scheme}'."
+        )
+    # S1: solution_name must be non-empty
+    if not solution_name or not solution_name.strip():
+        raise PreconditionError("solution_name must be non-empty.")
+    if output_times is not None:
+        for i, t in enumerate(output_times):
+            if not isinstance(t, (int, float)) or not math.isfinite(t):
+                raise PreconditionError(f"output_times[{i}] must be a finite number, got {t}.")
+        if any(t < t_start or t > t_end for t in output_times):
+            raise PreconditionError(
+                f"All output_times must be in [{t_start}, {t_end}].",
+                suggestion=f"Got times outside range: "
+                f"{[t for t in output_times if t < t_start or t > t_end]}",
+            )
+
+    max_steps = int((t_end - t_start) / dt)
+    if max_steps > 1_000_000:
+        raise PreconditionError(
+            f"Time integration would require {max_steps} steps. Maximum is 1,000,000.",
+            suggestion="Increase dt or reduce the time range.",
         )
 
     import dolfinx.fem.petsc
@@ -270,6 +410,12 @@ async def solve_time_dependent(
 
     # Build solver options
     opts = _build_petsc_opts(solver_type, ksp_type, pc_type, petsc_options)
+
+    # S4: warn if u_n not in session (time-stepping won't update previous solution)
+    if "u_n" not in session.functions:
+        logger.warning(
+            "No 'u_n' function in session. Time-stepping will not update previous solution."
+        )
 
     # Time integration loop
     t = t_start

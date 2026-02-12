@@ -18,6 +18,7 @@ Groups:
     E (4): Solver/postprocess -- time-dependent, export, evaluate, query
     F (3): Phase 14 tools -- remove_object, compute_mesh_quality, project
     G (3): Nonlinear solver -- solve_nonlinear postconditions and session state
+    H (2): Eval helpers -- shape postcondition and boolean coercion
 """
 
 from __future__ import annotations
@@ -796,3 +797,61 @@ class TestNonlinearSolver:
         assert "my_nl_sol" in session.functions
 
         session.check_invariants()
+
+
+# ---------------------------------------------------------------------------
+# Group H: Eval Helper Postconditions (2 tests)
+# ---------------------------------------------------------------------------
+
+
+class TestEvalHelperPostconditions:
+    """Verify eval_helpers postconditions with real numpy arrays."""
+
+    def test_interpolate_wrong_shape_expression(self):
+        """H1: eval_numpy_expression rejects wrong-shape result.
+
+        An expression returning shape (2, N) instead of (N,) must raise
+        PostconditionError or be broadcast-corrected.
+        """
+        import numpy as np
+
+        from dolfinx_mcp.eval_helpers import eval_numpy_expression
+
+        x = np.array([[0.0, 0.5, 1.0], [0.0, 0.5, 1.0]])  # (2, 3)
+
+        # Expression returning shape (N,) -- should pass
+        result = eval_numpy_expression("x[0] + x[1]", x)
+        assert result.shape == (3,)
+
+        # Expression returning scalar -- should broadcast
+        result = eval_numpy_expression("1.0", x)
+        assert result.shape == (3,)
+
+        # Expression returning shape (2, N) -- should raise PostconditionError
+        from dolfinx_mcp.errors import PostconditionError
+
+        with pytest.raises(PostconditionError, match="shape"):
+            # np.vstack([x[0], x[1]]) returns (2, 3) which cannot broadcast to (3,)
+            eval_numpy_expression("np.vstack([x[0], x[1]])", x)
+
+    def test_boundary_marker_non_boolean_coerced(self):
+        """H2: make_boundary_marker coerces non-boolean result to bool.
+
+        An expression like 'x[0] + 1.0' returns float array; the marker
+        must coerce it to boolean so DOLFINx can use it.
+        """
+        import numpy as np
+
+        from dolfinx_mcp.eval_helpers import make_boundary_marker
+
+        # Float expression that is truthy everywhere
+        marker = make_boundary_marker("x[0] + 1.0")
+        x = np.array([[0.0, 0.5, 1.0], [0.0, 0.0, 0.0]])
+        result = marker(x)
+        assert result.dtype == np.bool_, f"Expected bool, got {result.dtype}"
+        assert result.all()  # x[0]+1.0 is always > 0, so all True
+
+        # Boolean expression -- should pass through unchanged
+        marker_bool = make_boundary_marker("np.isclose(x[0], 0.0)")
+        result_bool = marker_bool(x)
+        assert result_bool.dtype == np.bool_

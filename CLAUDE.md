@@ -1,6 +1,6 @@
 # DOLFINx MCP Server
 
-MCP server for FEniCSx/DOLFINx finite element computing. Version 0.6.2.
+MCP server for FEniCSx/DOLFINx finite element computing. Version 0.7.0.
 
 ## Quick Reference
 
@@ -8,11 +8,11 @@ MCP server for FEniCSx/DOLFINx finite element computing. Version 0.6.2.
 # Install (dev mode)
 pip install -e ".[dev]"
 
-# Tests (no Docker needed, ~238 tests)
-pytest tests/ --ignore=tests/test_runtime_contracts.py -v
+# Tests (no Docker needed, ~341 tests)
+pytest tests/ --ignore=tests/test_runtime_contracts.py --ignore=tests/test_tutorial_workflows.py -v
 
 # Tests with coverage (threshold set in pyproject.toml [tool.coverage.report].fail_under = 90)
-pytest tests/ --ignore=tests/test_runtime_contracts.py --cov=dolfinx_mcp --cov-report=term-missing -v
+pytest tests/ --ignore=tests/test_runtime_contracts.py --ignore=tests/test_tutorial_workflows.py --cov=dolfinx_mcp --cov-report=term-missing -v
 
 # Lint
 ruff check src/ tests/
@@ -60,7 +60,7 @@ src/dolfinx_mcp/
         mesh.py          9 mesh tools
         spaces.py        2 function space tools
         problem.py       3 problem definition tools
-        solver.py        4 solver tools (solve, solve_time_dependent, get_solver_diagnostics, solve_nonlinear)
+        solver.py        4 solver tools (solve [+nullspace_mode], solve_time_dependent, get_solver_diagnostics, solve_nonlinear)
         postprocess.py   6 post-processing tools
         interpolation.py 3 interpolation tools
         session_mgmt.py  5 session management tools
@@ -134,6 +134,12 @@ Two distinct evaluation contexts:
 
 Both call `_check_forbidden()` eagerly. Never bypass this.
 
+### UFL Namespace Features (v0.7.0)
+
+- **`split()`**: Available for decomposing mixed-space functions into sub-components (e.g., `split(u)[0]` for the first sub-field of a mixed function).
+- **`ds(tag)`**: When `mark_boundaries()` has been called, `ds` is automatically upgraded to a `ufl.Measure` with `subdomain_data`, enabling `ds(1)`, `ds(2)` etc. for tagged boundary integrals. Falls back to plain `ufl.ds` when no boundary tags exist.
+- **`nullspace_mode`** on `solve()`: Accepts `"constant"` (scalar Neumann) or `"rigid_body"` (vector elasticity) to attach a PETSc nullspace to the system matrix for singular problems.
+
 ## Conventions
 
 - **Lazy imports**: All DOLFINx/UFL/NumPy imports are inside function bodies (not at module level) because the MCP server runs on the host but DOLFINx is only in Docker.
@@ -170,9 +176,16 @@ Both call `_check_forbidden()` eagerly. Never bypass this.
 ## Testing
 
 - Tests mock all DOLFINx imports (no Docker needed for unit tests)
-- `test_runtime_contracts.py` requires Docker container
+- `test_runtime_contracts.py` requires Docker container (28 tests)
+- `test_tutorial_workflows.py` requires Docker container (19 tests covering all DOLFINx tutorial chapters)
+  - T1 (2): Fundamentals — Poisson, membrane
+  - T2 (3): Time-dependent/nonlinear — heat, elasticity, nonlinear Poisson
+  - T3 (5): Boundary conditions — mixed BCs, multiple Dirichlet, subdomains, Robin, component-wise
+  - T4 (4): Advanced — convergence study, Helmholtz, mixed Poisson, singular Poisson
+  - T5 (5): Full coverage — Nitsche, hyperelasticity, electromagnetics (N1curl), AMR, Stokes (Taylor-Hood)
+- `test_edge_case_contracts.py` requires Docker container (26 tests)
 - Hypothesis property tests use 500 examples per property for SessionState invariants
-- Coverage gate: 90% on core modules (tools/, server.py, resources/, prompts/ are excluded)
+- Coverage gate: 90% on core modules (tools/, server.py, resources/, prompts/, ufl_context.py are excluded)
 - Fixtures in `conftest.py`: `session` (empty), `mock_ctx` (empty + MCP context), `populated_session` (mesh+space+function+BC+solution), `mock_ctx_populated` (populated + context)
 
 ## CI Pipeline
@@ -213,6 +226,13 @@ The `.claude/` directory adds FEM domain intelligence on top of the 32 MCP tools
 | `fem-workflow-mixed-poisson` | "mixed Poisson", "Raviart-Thomas", "flux variable" |
 | `fem-workflow-solver-config` | "PETSc options", "solver configuration", "JIT options" |
 | `fem-workflow-custom-newton` | "custom Newton", "Newton loop", "load stepping" |
+| `fem-workflow-convergence-rates` | "convergence rate", "mesh refinement study", "h-refinement" |
+| `fem-workflow-interpolation` | "interpolate function", "L2 projection", "transfer between spaces" |
+| `fem-workflow-visualization` | "plot solution", "export VTK", "visualize results" |
+| `fem-workflow-functionals` | "compute integral", "evaluate at point", "functional value" |
+| `fem-workflow-submesh` | "submesh", "extract subdomain", "domain decomposition" |
+| `fem-workflow-mesh-quality` | "mesh quality", "element quality", "mesh statistics" |
+| `fem-workflow-discrete-ops` | "discrete gradient", "discrete curl", "operator matrix" |
 
 ### Agents (`.claude/agents/`)
 

@@ -50,6 +50,18 @@ def eval_numpy_expression(expr: str, x: Any) -> Any:
     result = eval(expr, ns)  # noqa: S307 -- restricted namespace, Docker-sandboxed
     if isinstance(result, (int, float)):
         return np.full(x.shape[1], float(result))
+    result = np.asarray(result)
+    n_points = x.shape[1]
+    if result.shape != (n_points,) and result.shape != ():
+        try:
+            result = np.broadcast_to(result, (n_points,)).copy()
+        except ValueError as exc:
+            from .errors import PostconditionError
+            raise PostconditionError(
+                f"Expression produced shape {result.shape}, expected ({n_points},).",
+                suggestion="Expression must return a scalar or array matching "
+                "the number of mesh points.",
+            ) from exc
     return result
 
 
@@ -79,5 +91,9 @@ def make_boundary_marker(condition: str) -> Callable[[Any], Any]:
 
     def marker(x: Any) -> Any:
         ns: dict[str, Any] = {"x": x, "np": np, "pi": np.pi, "__builtins__": {}}
-        return eval(condition, ns)  # noqa: S307 -- restricted namespace, Docker-sandboxed
+        result = eval(condition, ns)  # noqa: S307 -- restricted namespace, Docker-sandboxed
+        result = np.asarray(result)
+        if result.dtype.kind != 'b':
+            result = result.astype(bool)
+        return result
     return marker
