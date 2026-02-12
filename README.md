@@ -2,9 +2,9 @@
 
 MCP server for FEniCSx/DOLFINx finite element computing.
 
-**Version**: 0.6.1 | **License**: MIT | **Python**: >= 3.10 | **DOLFINx**: 0.10.0
+**Version**: 0.6.2 | **License**: MIT | **Python**: >= 3.10 | **DOLFINx**: 0.10.0
 
-Exposes 31 tools, 6 prompt templates, and 6 resources for mesh generation,
+Exposes 32 tools, 6 prompt templates, and 6 resources for mesh generation,
 function space creation, PDE solving, and post-processing through the
 [Model Context Protocol](https://modelcontextprotocol.io/). Runs inside a
 Docker container with the full DOLFINx/PETSc stack.

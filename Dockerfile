@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir \
     pytest-asyncio
 
 # Copy source
-COPY pyproject.toml .
+COPY pyproject.toml README.md ./
 COPY src/ src/
 
 # Install package in editable mode

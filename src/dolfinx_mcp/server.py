@@ -35,4 +35,4 @@ from .tools import (  # noqa: E402, F401
 def main() -> None:
     """Start the DOLFINx MCP server."""
     transport = os.environ.get("DOLFINX_MCP_TRANSPORT", "stdio")
-    mcp.run(transport=transport)
+    mcp.run(transport=transport)  # type: ignore[arg-type]  # env var is validated by FastMCP

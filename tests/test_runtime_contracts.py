@@ -17,6 +17,7 @@ Groups:
     D (4): Mesh operations -- create, refine, mark, submesh
     E (4): Solver/postprocess -- time-dependent, export, evaluate, query
     F (3): Phase 14 tools -- remove_object, compute_mesh_quality, project
+    G (3): Nonlinear solver -- solve_nonlinear postconditions and session state
 """
 
 from __future__ import annotations
@@ -453,8 +454,8 @@ class TestMeshOperations:
         await create_unit_square(name="m", nx=4, ny=4, ctx=ctx)
         result = await mark_boundaries(
             markers=[
-                {"tag": 1, "condition": "near(x[0], 0)"},
-                {"tag": 2, "condition": "near(x[0], 1)"},
+                {"tag": 1, "condition": "np.isclose(x[0], 0.0)"},
+                {"tag": 2, "condition": "np.isclose(x[0], 1.0)"},
             ],
             ctx=ctx,
         )
@@ -462,7 +463,7 @@ class TestMeshOperations:
 
         # Query the tags
         query_result = await manage_mesh_tags(
-            action="query", query_name=result["tags_name"], ctx=ctx,
+            action="query", name=result["name"], ctx=ctx,
         )
         assert "error" not in query_result
         assert query_result["num_entities"] > 0
@@ -478,14 +479,13 @@ class TestMeshOperations:
 
         await create_unit_square(name="m", nx=8, ny=8, ctx=ctx)
         tag_result = await mark_boundaries(
-            markers=[{"tag": 1, "condition": "near(x[0], 0)"}],
-            dimension=2,  # cell markers for submesh
+            markers=[{"tag": 1, "condition": "x[0] < 0.5"}],
             ctx=ctx,
         )
 
         # Try to create a submesh from tagged cells
         result = await create_submesh(
-            name="sub", tags_name=tag_result["tags_name"],
+            name="sub", tags_name=tag_result["name"],
             tag_values=[1], ctx=ctx,
         )
         if "error" not in result:
@@ -576,7 +576,11 @@ class TestSolverPostprocess:
         )
         assert "error" not in result
         for pt in result["evaluations"]:
-            assert math.isfinite(pt["value"])
+            val = pt["value"]
+            if isinstance(val, list):
+                assert all(math.isfinite(v) for v in val)
+            else:
+                assert math.isfinite(val)
 
     @pytest.mark.asyncio
     async def test_query_point_values(self, session, ctx):
@@ -593,9 +597,13 @@ class TestSolverPostprocess:
             ctx=ctx,
         )
         assert "error" not in result
-        assert len(result["results"]) == 1
-        pt_result = result["results"][0]
-        assert math.isfinite(pt_result["value"])
+        assert len(result["queries"]) == 1
+        pt_result = result["queries"][0]
+        val = pt_result["value"]
+        if isinstance(val, list):
+            assert all(math.isfinite(v) for v in val)
+        else:
+            assert math.isfinite(val)
 
 
 # ---------------------------------------------------------------------------
@@ -674,4 +682,117 @@ class TestPhase14Tools:
         assert result["l2_norm"] > 0
         assert math.isfinite(result["l2_norm"])
         assert "p_func" in session.functions
+        session.check_invariants()
+
+
+# ---------------------------------------------------------------------------
+# Group G: Nonlinear Solver (3 tests)
+# ---------------------------------------------------------------------------
+
+
+async def _setup_nonlinear_poisson(session: SessionState, ctx: _FakeContext) -> dict:
+    """Set up and solve a linear Poisson in residual form via solve_nonlinear.
+
+    Uses -div(grad(u)) = 1 with homogeneous Dirichlet BCs on an 8x8 P1 mesh.
+    This is linear so Newton converges in 1 iteration -- simplest possible
+    nonlinear-solver runtime test.
+
+    Returns the solve_nonlinear result dict.
+    """
+    from dolfinx_mcp.tools.mesh import create_unit_square
+    from dolfinx_mcp.tools.problem import (
+        apply_boundary_condition,
+        set_material_properties,
+    )
+    from dolfinx_mcp.tools.solver import solve_nonlinear
+    from dolfinx_mcp.tools.spaces import create_function_space
+
+    await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
+    await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
+
+    # Source term f = 1
+    await set_material_properties(name="f", value="1.0 + 0*x[0]", ctx=ctx)
+
+    # Mutable unknown with zero initial guess
+    await set_material_properties(name="u", value="0.0 + 0*x[0]", ctx=ctx)
+
+    # Homogeneous Dirichlet BC on all boundaries
+    await apply_boundary_condition(value=0.0, boundary="True", ctx=ctx)
+
+    return await solve_nonlinear(
+        residual="inner(grad(u), grad(v))*dx - f*v*dx",
+        unknown="u",
+        ctx=ctx,
+    )
+
+
+class TestNonlinearSolver:
+    """Verify runtime contracts for solve_nonlinear with real DOLFINx objects."""
+
+    @pytest.mark.asyncio
+    async def test_solve_nonlinear_postconditions_pass(self, session, ctx):
+        """G1: solve_nonlinear() postconditions -- finite, L2 >= 0, invariants.
+
+        Exercises: solver.py:563 (POST-1 finite), solver.py:575 (POST-2 L2 >= 0),
+        solver.py:607-609 (POST-3 invariants).
+        """
+        result = await _setup_nonlinear_poisson(session, ctx)
+        assert "error" not in result
+        assert result["converged"] is True
+        assert result["iterations"] >= 1
+        assert result["solution_norm_L2"] > 0
+        assert math.isfinite(result["solution_norm_L2"])
+        assert math.isfinite(result["residual_norm"])
+
+    @pytest.mark.asyncio
+    async def test_solve_nonlinear_session_state(self, session, ctx):
+        """G2: solve_nonlinear registers solution and function, invariants hold.
+
+        Exercises: solver.py:596 (solution registration), solver.py:600
+        (function registration), session invariant check.
+        """
+        result = await _setup_nonlinear_poisson(session, ctx)
+        assert "error" not in result
+
+        # Solution registered under the unknown name
+        assert "u" in session.solutions
+        assert "u" in session.functions
+        assert session.solutions["u"].converged is True
+
+        # Explicit invariant check
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_solve_nonlinear_custom_solution_name(self, session, ctx):
+        """G3: solve_nonlinear with solution_name registers under custom name.
+
+        Exercises dual registration with a custom solution_name parameter.
+        """
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import (
+            apply_boundary_condition,
+            set_material_properties,
+        )
+        from dolfinx_mcp.tools.solver import solve_nonlinear
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
+        await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
+        await set_material_properties(name="f", value="1.0 + 0*x[0]", ctx=ctx)
+        await set_material_properties(name="u", value="0.0 + 0*x[0]", ctx=ctx)
+        await apply_boundary_condition(value=0.0, boundary="True", ctx=ctx)
+
+        result = await solve_nonlinear(
+            residual="inner(grad(u), grad(v))*dx - f*v*dx",
+            unknown="u",
+            solution_name="my_nl_sol",
+            ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["solution_name"] == "my_nl_sol"
+
+        # Custom name registered in both registries
+        assert "my_nl_sol" in session.solutions
+        assert "my_nl_sol" in session.functions
+
         session.check_invariants()

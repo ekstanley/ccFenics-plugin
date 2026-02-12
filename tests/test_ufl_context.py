@@ -80,3 +80,14 @@ class TestSafeEvaluate:
         ns = {"__builtins__": {}, "pi": math.pi, "sin": math.sin}
         result = safe_evaluate("sin(pi / 2)", ns)
         assert abs(result - 1.0) < 1e-10
+
+    def test_generic_exception(self):
+        """Trigger the generic Exception handler (e.g. ZeroDivisionError)."""
+        with pytest.raises(InvalidUFLExpressionError, match="Failed to evaluate"):
+            safe_evaluate("1 / 0", {"__builtins__": {}})
+
+    def test_none_result_rejected(self):
+        """Expression evaluating to None should raise."""
+        ns = {"__builtins__": {}, "noop": lambda: None}
+        with pytest.raises(InvalidUFLExpressionError, match="evaluated to None"):
+            safe_evaluate("noop()", ns)

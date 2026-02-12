@@ -12,6 +12,7 @@ from .._app import mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
+    FunctionNotFoundError,
     PostconditionError,
     PreconditionError,
     SolverError,
@@ -405,4 +406,217 @@ async def get_solver_diagnostics(
         "wall_time": round(sol_info.wall_time, 4),
         "solution_norm_L2": round(l2_norm, 8),
         "num_dofs": num_dofs,
+    }
+
+
+_VALID_SNES_TYPES = frozenset({"newtonls", "newtontr", "nrichardson"})
+
+
+@mcp.tool()
+@handle_tool_errors
+async def solve_nonlinear(
+    residual: str,
+    unknown: str,
+    jacobian: str | None = None,
+    snes_type: str = "newtonls",
+    ksp_type: str = "preonly",
+    pc_type: str = "lu",
+    rtol: float = 1e-10,
+    atol: float = 1e-12,
+    max_iter: int = 50,
+    petsc_options: dict[str, Any] | None = None,
+    solution_name: str | None = None,
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """Solve a nonlinear variational problem using Newton's method.
+
+    Requires a mutable Function (the unknown) already in the session, typically
+    created via interpolate with a zero initial guess. The solver modifies this
+    function in-place.
+
+    Args:
+        residual: UFL residual form F(u;v) as a string.
+        unknown: Name of a Function in the session (mutable unknown).
+        jacobian: Optional explicit Jacobian J(u;du,v) as a UFL string.
+            If None, auto-derived via ufl.derivative.
+        snes_type: PETSc SNES solver type ("newtonls", "newtontr", "nrichardson").
+        ksp_type: Inner linear solver KSP type (default "preonly").
+        pc_type: Inner preconditioner type (default "lu").
+        rtol: Relative tolerance for Newton solver.
+        atol: Absolute tolerance for Newton solver.
+        max_iter: Maximum Newton iterations.
+        petsc_options: Additional PETSc options as key-value pairs.
+        solution_name: Name to register the result under (defaults to unknown).
+
+    Returns:
+        dict with converged (bool), iterations (int), residual_norm (float),
+        wall_time (float), solution_name (str), solution_norm_L2 (float).
+    """
+    from ..ufl_context import _check_forbidden
+
+    # PRE-1: residual non-empty
+    if not residual or not residual.strip():
+        raise PreconditionError("residual must be a non-empty string.")
+
+    # PRE-2: residual passes token blocklist
+    _check_forbidden(residual)
+
+    # PRE-3: jacobian passes token blocklist if provided
+    if jacobian is not None:
+        if not jacobian.strip():
+            raise PreconditionError("jacobian must be non-empty if provided.")
+        _check_forbidden(jacobian)
+
+    # PRE-5: snes_type is valid
+    if snes_type not in _VALID_SNES_TYPES:
+        raise PreconditionError(
+            f"snes_type must be one of {sorted(_VALID_SNES_TYPES)}, got '{snes_type}'."
+        )
+
+    # PRE-6: numeric parameters are positive
+    if max_iter <= 0:
+        raise PreconditionError(f"max_iter must be > 0, got {max_iter}.")
+    if rtol <= 0:
+        raise PreconditionError(f"rtol must be > 0, got {rtol}.")
+    if atol <= 0:
+        raise PreconditionError(f"atol must be > 0, got {atol}.")
+
+    session = _get_session(ctx)
+
+    # PRE-4: unknown exists in session.functions
+    if unknown not in session.functions:
+        available = list(session.functions.keys())
+        raise FunctionNotFoundError(
+            f"Unknown function '{unknown}' not found. Available: {available}",
+            suggestion="Create the unknown function first via interpolate "
+            "(e.g. interpolate(name='u', expression='0.0',"
+            " function_space='V')).",
+        )
+
+    import dolfinx.fem
+    import dolfinx.fem.petsc
+    import numpy as np
+    import ufl
+
+    from ..ufl_context import build_namespace, safe_evaluate
+
+    u_func = session.functions[unknown].function
+    space_name = session.functions[unknown].space_name
+    V = u_func.function_space
+
+    # Build UFL namespace with session symbols + the unknown and test function
+    ns = build_namespace(session)
+    ns["u"] = u_func
+    ns["v"] = ufl.TestFunction(V)
+    ns["du"] = ufl.TrialFunction(V)
+
+    # Evaluate residual form F(u; v)
+    F_ufl = safe_evaluate(residual, ns)
+
+    # Derive or evaluate Jacobian J(u; du, v)
+    if jacobian is None:
+        J_ufl = ufl.derivative(F_ufl, u_func, ufl.TrialFunction(V))
+    else:
+        J_ufl = safe_evaluate(jacobian, ns)
+
+    # Collect boundary conditions
+    bcs = [bc_info.bc for bc_info in session.bcs.values()]
+
+    # Build PETSc options dict for the NonlinearProblem
+    petsc_opts: dict[str, Any] = {
+        "ksp_type": ksp_type,
+        "pc_type": pc_type,
+        "snes_type": snes_type,
+        "snes_rtol": str(rtol),
+        "snes_atol": str(atol),
+        "snes_max_it": str(max_iter),
+    }
+    if petsc_options:
+        petsc_opts.update(petsc_options)
+
+    # Create nonlinear problem and solve
+    t0 = time.perf_counter()
+    try:
+        problem = dolfinx.fem.petsc.NonlinearProblem(
+            F_ufl, u_func,
+            petsc_options_prefix="nlsolve_",
+            bcs=bcs, J=J_ufl,
+            petsc_options=petsc_opts,
+        )
+        problem.solve()
+
+        # Extract convergence info from the underlying SNES
+        snes = problem.solver
+        converged = snes.getConvergedReason() > 0
+        n_iters = snes.getIterationNumber()
+    except DOLFINxMCPError:
+        raise
+    except Exception as exc:
+        raise SolverError(
+            f"Nonlinear solver failed: {exc}",
+            suggestion="Check residual form, boundary conditions, and initial guess. "
+            "Try a better initial guess or smaller load step.",
+        ) from exc
+    wall_time = time.perf_counter() - t0
+
+    # POST-1: solution must be finite
+    if not np.isfinite(u_func.x.array).all():
+        raise SolverError(
+            "Nonlinear solution contains NaN or Inf values.",
+            suggestion="Check initial guess, boundary conditions, and residual form. "
+            "Consider load stepping for large deformations.",
+        )
+
+    # Compute L2 norm
+    from ..utils import compute_l2_norm
+    l2_norm = compute_l2_norm(u_func)
+
+    # POST-2: L2 norm must be non-negative
+    if l2_norm < 0:
+        raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
+
+    # Get residual norm from SNES if available
+    residual_norm = 0.0
+    import contextlib
+    with contextlib.suppress(Exception):
+        residual_norm = float(snes.getFunctionNorm())
+
+    # Register solution
+    sol_name = solution_name or unknown
+    sol_info = SolutionInfo(
+        name=sol_name,
+        function=u_func,
+        space_name=space_name,
+        converged=bool(converged),
+        iterations=int(n_iters),
+        residual_norm=residual_norm,
+        wall_time=wall_time,
+    )
+    session.solutions[sol_name] = sol_info
+
+    # Also register/update as a function
+    from ..session import FunctionInfo
+    session.functions[sol_name] = FunctionInfo(
+        name=sol_name,
+        function=u_func,
+        space_name=space_name,
+        description="Nonlinear solver solution",
+    )
+
+    # POST-3: session invariants
+    if __debug__:
+        session.check_invariants()
+
+    logger.info(
+        "Nonlinear solve: converged=%s, iterations=%d, residual=%.2e, wall_time=%.3fs",
+        converged, n_iters, residual_norm, wall_time,
+    )
+
+    return {
+        "converged": bool(converged),
+        "iterations": int(n_iters),
+        "residual_norm": float(residual_norm),
+        "wall_time": round(wall_time, 4),
+        "solution_name": sol_name,
+        "solution_norm_L2": round(l2_norm, 8),
     }

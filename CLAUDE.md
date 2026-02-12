@@ -1,6 +1,6 @@
 # DOLFINx MCP Server
 
-MCP server for FEniCSx/DOLFINx finite element computing. Version 0.6.1.
+MCP server for FEniCSx/DOLFINx finite element computing. Version 0.6.2.
 
 ## Quick Reference
 
@@ -60,7 +60,7 @@ src/dolfinx_mcp/
         mesh.py          9 mesh tools
         spaces.py        2 function space tools
         problem.py       3 problem definition tools
-        solver.py        3 solver tools
+        solver.py        4 solver tools (solve, solve_time_dependent, get_solver_diagnostics, solve_nonlinear)
         postprocess.py   6 post-processing tools
         interpolation.py 3 interpolation tools
         session_mgmt.py  5 session management tools
@@ -179,3 +179,62 @@ Both call `_check_forbidden()` eagerly. Never bypass this.
 
 Three jobs: `lint` (ruff), `typecheck` (pyright), `test` (pytest + coverage).
 All run on Python 3.12, Ubuntu latest.
+
+## Plugin Layer (Claude Code Integration)
+
+The `.claude/` directory adds FEM domain intelligence on top of the 32 MCP tools.
+
+### Skills (`.claude/skills/`)
+
+| Skill | Triggers |
+|-------|----------|
+| `fem-workflow-poisson` | "solve Poisson", "Laplace equation", "heat diffusion" |
+| `fem-workflow-elasticity` | "linear elasticity", "stress strain", "elastic deformation" |
+| `fem-workflow-stokes` | "Stokes flow", "creeping flow", "incompressible flow" |
+| `fem-solver-selection` | "which solver", "KSP options", "preconditioner" |
+| `fem-element-selection` | "which element", "Taylor-Hood", "P1 vs P2" |
+| `fem-debugging` | "solver diverged", "NaN values", "convergence failure" |
+| `fem-workflow-complex-poisson` | "complex-valued", "complex Poisson", "sesquilinear" |
+| `fem-workflow-nitsche` | "Nitsche method", "weak Dirichlet", "penalty BC" |
+| `fem-workflow-membrane` | "membrane deflection", "curved domain", "Gaussian load" |
+| `fem-workflow-heat-equation` | "heat equation", "diffusion", "time-dependent", "transient" |
+| `fem-workflow-nonlinear-poisson` | "nonlinear Poisson", "Newton", "nonlinear PDE" |
+| `fem-workflow-navier-stokes` | "Navier-Stokes", "IPCS", "channel flow" |
+| `fem-workflow-hyperelasticity` | "hyperelasticity", "large deformation", "neo-Hookean" |
+| `fem-workflow-helmholtz` | "Helmholtz", "acoustics", "frequency domain" |
+| `fem-workflow-adaptive-refinement` | "adaptive refinement", "AMR", "error estimator" |
+| `fem-workflow-singular-poisson` | "singular Poisson", "nullspace", "pure Neumann" |
+| `fem-workflow-mixed-bcs` | "mixed BCs", "Neumann and Dirichlet", "combined BCs" |
+| `fem-workflow-multiple-dirichlet` | "multiple Dirichlet", "different BC values" |
+| `fem-workflow-material-subdomains` | "material subdomains", "piecewise coefficients" |
+| `fem-workflow-robin-bc` | "Robin BC", "impedance BC", "Newton cooling" |
+| `fem-workflow-component-bc` | "component-wise BC", "fix x-component", "sub_space" |
+| `fem-workflow-electromagnetics` | "electromagnetics", "Nedelec", "H(curl)", "Maxwell" |
+| `fem-workflow-mixed-poisson` | "mixed Poisson", "Raviart-Thomas", "flux variable" |
+| `fem-workflow-solver-config` | "PETSc options", "solver configuration", "JIT options" |
+| `fem-workflow-custom-newton` | "custom Newton", "Newton loop", "load stepping" |
+
+### Agents (`.claude/agents/`)
+
+| Agent | Purpose | Model |
+|-------|---------|-------|
+| `fem-solver` | Complete PDE solve pipeline | sonnet |
+| `convergence-study` | Automated mesh refinement study | sonnet |
+| `mesh-quality` | Mesh quality analysis | haiku |
+| `nonlinear-solver` | Nonlinear PDE solve with Newton | sonnet |
+| `time-dependent-solver` | Time-dependent PDE workflows | sonnet |
+| `boundary-condition-setup` | Complex BC configuration | haiku |
+
+### Hooks (`.claude/settings.json`)
+
+- **SessionStart**: Injects FEM workflow context, element families, and nonlinear solver capability
+- **PreToolUse**: Client-side expression safety check (mirrors `_check_forbidden()` from `ufl_context.py`); covers `residual` and `jacobian` parameters for `solve_nonlinear`
+
+### Commands (`.claude/commands/`)
+
+- `/solve-poisson [mesh_size] [degree]`: End-to-end Poisson solve with manufactured solution
+- `/run-tests`: Test suite with coverage
+- `/add-tool`: New MCP tool scaffold
+- `/check-contracts`: DbC compliance audit
+- `/tutorial-chapter [chapter]`: Walk through a DOLFINx tutorial chapter step-by-step
+- `/verify-installation`: Check Docker, container, and MCP server status
