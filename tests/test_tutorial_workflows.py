@@ -15,11 +15,17 @@ Groups:
             singular Poisson)
     T5 (5): Part 5 -- Remaining Tutorial Coverage (Nitsche, hyperelasticity,
             electromagnetics, adaptive refinement, Stokes flow)
+    T6 (6): Part 6 -- Official Demo Coverage (Allen-Cahn, biharmonic, DG Poisson,
+            Lagrange variants, Laplacian eigenvalue, EM waveguide eigenvalue)
 
 All gaps resolved in v0.7.0:
     G1: ds(tag) subdomain data -- build_namespace now attaches subdomain_data from mesh_tags
     G2: split() for mixed spaces -- ufl.split added to namespace
     G3: Nullspace support -- solve() now accepts nullspace_mode parameter
+
+Official demo gaps closed in v0.8.0:
+    DG operators (jump, avg), Lagrange element variants, SLEPc eigenvalue solver,
+    Cahn-Hilliard/biharmonic skills.
 """
 
 from __future__ import annotations
@@ -1103,5 +1109,263 @@ class TestT5RemainingTutorialCoverage:
         )
         assert "error" not in result
         assert result["converged"] is True
+
+        session.check_invariants()
+
+
+# ---------------------------------------------------------------------------
+# T6: Official Demo Coverage (v0.8.0)
+# ---------------------------------------------------------------------------
+
+
+class TestT6OfficialDemoCoverage:
+    """Tests for official DOLFINx demo capabilities added in v0.8.0.
+
+    T6.1: Allen-Cahn steady-state (nonlinear phase-field proxy)
+    T6.2: Biharmonic mixed formulation (fourth-order PDE)
+    T6.3: DG Poisson with SIPG (jump/avg operators)
+    T6.4: Lagrange GLL variant (element variant parameter)
+    T6.5: Laplacian eigenvalue (SLEPc EPS solver)
+    T6.6: EM waveguide eigenvalue (Nedelec curl-curl)
+    """
+
+    @pytest.mark.asyncio
+    async def test_t6_1_allen_cahn_steady_state(self, session, ctx):
+        """Allen-Cahn: -eps^2*lap(u) + u^3 - u = 0 with tanh-profile BCs."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import (
+            apply_boundary_condition,
+            set_material_properties,
+        )
+        from dolfinx_mcp.tools.solver import solve_nonlinear
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        # Use finer mesh for better Newton convergence with sharp interface
+        await create_unit_square(name="mesh", nx=32, ny=32, ctx=ctx)
+        await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
+
+        # Initial guess: tanh-profile approximation for better convergence
+        await set_material_properties(
+            name="u", value="np.tanh((x[0] - 0.5) / 0.1)",
+            function_space="V", ctx=ctx,
+        )
+
+        # Dirichlet BCs: u = -1 at x=0, u = 1 at x=1
+        await apply_boundary_condition(
+            value=-1.0, boundary="np.isclose(x[0], 0.0)", ctx=ctx,
+        )
+        await apply_boundary_condition(
+            value=1.0, boundary="np.isclose(x[0], 1.0)", ctx=ctx,
+        )
+
+        # Solve: residual = eps^2*inner(grad(u),grad(v))*dx + (u^3 - u)*v*dx
+        # Use eps^2 = 0.04 (eps=0.2) for easier convergence while still
+        # demonstrating the phase-field interface
+        result = await solve_nonlinear(
+            residual="0.04*inner(grad(u), grad(v))*dx + (u**3 - u)*v*dx",
+            unknown="u",
+            ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["converged"] is True
+        assert result["solution_norm_L2"] > 0
+
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_t6_2_biharmonic_mixed(self, session, ctx):
+        """Biharmonic: nabla^4 u = f via mixed (sigma, u) formulation."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import (
+            apply_boundary_condition,
+            define_variational_form,
+            set_material_properties,
+        )
+        from dolfinx_mcp.tools.solver import solve
+        from dolfinx_mcp.tools.spaces import (
+            create_function_space,
+            create_mixed_space,
+        )
+
+        await create_unit_square(name="mesh", nx=16, ny=16, ctx=ctx)
+
+        # Two P2 spaces for sigma and u
+        await create_function_space(
+            name="V_sigma", family="Lagrange", degree=2, ctx=ctx,
+        )
+        await create_function_space(
+            name="V_u", family="Lagrange", degree=2, ctx=ctx,
+        )
+        await create_mixed_space(name="W", subspaces=["V_sigma", "V_u"], ctx=ctx)
+
+        await set_material_properties(name="f", value=1.0, ctx=ctx)
+
+        # Mixed bilinear form using split()
+        bilinear = (
+            "(split(u)[0]*split(v)[0]"
+            " - inner(grad(split(u)[1]), grad(split(v)[0]))"
+            " + inner(grad(split(u)[0]), grad(split(v)[1])))*dx"
+        )
+        linear = "f * split(v)[1] * dx"
+
+        form_result = await define_variational_form(
+            bilinear=bilinear,
+            linear=linear,
+            trial_space="W",
+            test_space="W",
+            ctx=ctx,
+        )
+        assert "error" not in form_result
+
+        # BC: u = 0 on boundary (sub_space=1 for the u-component)
+        await apply_boundary_condition(
+            value=0.0, boundary="True",
+            function_space="W", sub_space=1, ctx=ctx,
+        )
+
+        # Saddle-point system needs MUMPS
+        result = await solve(
+            solver_type="direct",
+            petsc_options={"pc_factor_mat_solver_type": "mumps"},
+            ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["converged"] is True
+
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_t6_3_dg_poisson_sipg(self, session, ctx):
+        """DG Poisson with SIPG: jump/avg operators on interior facets."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import (
+            define_variational_form,
+            set_material_properties,
+        )
+        from dolfinx_mcp.tools.solver import solve
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
+        await create_function_space(name="V", family="DG", degree=1, ctx=ctx)
+        await set_material_properties(name="f", value=1.0, ctx=ctx)
+
+        # SIPG bilinear form with jump/avg operators
+        # Volume + consistency + symmetry + penalty + Nitsche boundary terms
+        alpha = "10.0"
+        bilinear = (
+            "inner(grad(u), grad(v))*dx"
+            " - inner(avg(nabla_grad(u)), jump(v, n))*dS"
+            " - inner(jump(u, n), avg(nabla_grad(v)))*dS"
+            f" + ({alpha})/avg(h) * inner(jump(u), jump(v))*dS"
+            f" + ({alpha})/h * inner(u, v)*ds"
+            " - inner(dot(grad(u), n), v)*ds"
+            " - inner(u, dot(grad(v), n))*ds"
+        )
+        linear = "f*v*dx"
+
+        form_result = await define_variational_form(
+            bilinear=bilinear, linear=linear, ctx=ctx,
+        )
+        assert "error" not in form_result
+
+        # No Dirichlet BCs (imposed weakly via Nitsche terms)
+        result = await solve(solver_type="direct", ctx=ctx)
+        assert "error" not in result
+        assert result["converged"] is True
+
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_t6_4_lagrange_gll_variant(self, session, ctx):
+        """Lagrange element with GLL variant (equispaced nodes -> GLL nodes)."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="mesh", nx=4, ny=4, ctx=ctx)
+
+        result = await create_function_space(
+            name="V_gll", family="Lagrange", degree=3,
+            variant="gll_warped", ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["num_dofs"] > 0
+        assert result["variant"] == "gll_warped"
+
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_t6_5_laplacian_eigenvalue(self, session, ctx):
+        """Laplacian eigenvalues on unit square: lambda_1 = 2*pi^2."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import apply_boundary_condition
+        from dolfinx_mcp.tools.solver import solve_eigenvalue
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="mesh", nx=16, ny=16, ctx=ctx)
+        await create_function_space(
+            name="V", family="Lagrange", degree=1, ctx=ctx,
+        )
+        await apply_boundary_condition(
+            value=0.0, boundary="True", ctx=ctx,
+        )
+
+        result = await solve_eigenvalue(
+            stiffness_form="inner(grad(u), grad(v))*dx",
+            mass_form="inner(u, v)*dx",
+            num_eigenvalues=4,
+            function_space="V",
+            ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["num_converged"] >= 4
+
+        # Check first eigenvalue: lambda_1 = 2*pi^2 ~ 19.739
+        lambda_exact = 2 * math.pi**2
+        lambda_computed = result["eigenvalues"][0]["real"]
+        relative_error = abs(lambda_computed - lambda_exact) / lambda_exact
+        assert relative_error < 0.05, (
+            f"First eigenvalue {lambda_computed:.4f} deviates from exact "
+            f"{lambda_exact:.4f} by {relative_error:.2%}"
+        )
+
+        # Check eigenvectors stored in session
+        assert "eig_0" in session.functions
+        assert len(result["eigenvectors"]) >= 4
+
+        session.check_invariants()
+
+    @pytest.mark.asyncio
+    async def test_t6_6_em_waveguide_eigenvalue(self, session, ctx):
+        """EM waveguide: curl-curl eigenvalue with Nedelec elements.
+
+        Uses natural BCs (PMC boundary) -- no explicit Dirichlet BCs needed
+        since N1curl spaces require vector-valued BCs which need topological
+        DOF location. The curl-curl operator is well-posed with natural BCs.
+        """
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.solver import solve_eigenvalue
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
+        await create_function_space(
+            name="V", family="N1curl", degree=1, ctx=ctx,
+        )
+
+        result = await solve_eigenvalue(
+            stiffness_form="inner(curl(u), curl(v))*dx",
+            mass_form="inner(u, v)*dx",
+            num_eigenvalues=6,
+            which="smallest_magnitude",
+            function_space="V",
+            ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["num_converged"] >= 1
+
+        # Eigenvalues should have non-negative real parts (curl-curl is PSD)
+        for ev in result["eigenvalues"]:
+            assert ev["real"] >= -1e-10, (
+                f"Eigenvalue {ev['index']} has negative real part: {ev['real']}"
+            )
 
         session.check_invariants()

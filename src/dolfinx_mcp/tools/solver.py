@@ -766,3 +766,273 @@ async def solve_nonlinear(
         "solution_name": sol_name,
         "solution_norm_L2": round(l2_norm, 8),
     }
+
+
+_VALID_EPS_TYPES = frozenset({"krylovschur", "lanczos", "arnoldi", "lapack", "power"})
+_VALID_WHICH_EIGENVALUES = frozenset({
+    "smallest_magnitude", "largest_magnitude",
+    "smallest_real", "largest_real",
+    "target_magnitude", "target_real",
+})
+
+
+@mcp.tool()
+@handle_tool_errors
+async def solve_eigenvalue(
+    stiffness_form: str,
+    mass_form: str,
+    num_eigenvalues: int = 6,
+    which: str = "smallest_magnitude",
+    target: float | None = None,
+    eps_type: str = "krylovschur",
+    function_space: str | None = None,
+    solution_prefix: str = "eig",
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """Solve a generalized eigenvalue problem A*x = lambda*B*x.
+
+    Assembles stiffness (A) and mass (B) matrices from UFL form strings
+    and uses SLEPc's EPS solver to find eigenvalues and eigenvectors.
+
+    Args:
+        stiffness_form: UFL bilinear form string for the stiffness matrix A
+            (e.g. "inner(grad(u), grad(v))*dx").
+        mass_form: UFL bilinear form string for the mass matrix B
+            (e.g. "inner(u, v)*dx").
+        num_eigenvalues: Number of eigenvalues to compute (1-1000).
+        which: Which eigenvalues to target. One of: smallest_magnitude,
+            largest_magnitude, smallest_real, largest_real,
+            target_magnitude, target_real.
+        target: Target value for spectral transformation (required when
+            which starts with "target_").
+        eps_type: SLEPc eigensolver type. One of: krylovschur, lanczos,
+            arnoldi, lapack, power.
+        function_space: Function space name. Defaults to the active space.
+        solution_prefix: Prefix for eigenvector names (e.g. "eig" produces
+            "eig_0", "eig_1", ...).
+
+    Returns:
+        dict with num_converged, eigenvalues (list of {index, real, imag}),
+        eigenvectors (list of names), wall_time, and solver_type.
+    """
+    # PRE-1: stiffness_form non-empty
+    if not stiffness_form or not stiffness_form.strip():
+        raise PreconditionError("stiffness_form must be a non-empty UFL expression.")
+    # PRE-2: mass_form non-empty
+    if not mass_form or not mass_form.strip():
+        raise PreconditionError("mass_form must be a non-empty UFL expression.")
+    # PRE-3: num_eigenvalues in [1, 1000]
+    if not 1 <= num_eigenvalues <= 1000:
+        raise PreconditionError(
+            f"num_eigenvalues must be in [1, 1000], got {num_eigenvalues}.",
+        )
+    # PRE-4: which valid
+    if which not in _VALID_WHICH_EIGENVALUES:
+        raise PreconditionError(
+            f"which must be one of {sorted(_VALID_WHICH_EIGENVALUES)}, got '{which}'.",
+        )
+    # PRE-5: target required for target_ modes
+    if which.startswith("target_") and target is None:
+        raise PreconditionError(
+            f"target value is required when which='{which}'.",
+            suggestion="Provide a target eigenvalue for spectral transformation.",
+        )
+    # PRE-6: eps_type valid
+    if eps_type not in _VALID_EPS_TYPES:
+        raise PreconditionError(
+            f"eps_type must be one of {sorted(_VALID_EPS_TYPES)}, got '{eps_type}'.",
+        )
+
+    # Eager forbidden-token check on expression strings
+    from ..ufl_context import _check_forbidden
+    _check_forbidden(stiffness_form)
+    _check_forbidden(mass_form)
+
+    import dolfinx.fem
+    import dolfinx.fem.petsc
+    import numpy as np
+    import ufl
+
+    session = _get_session(ctx)
+
+    # Resolve function space
+    space_name = function_space or session.active_space
+    if space_name is None:
+        # Use first available function space
+        if not session.function_spaces:
+            raise PreconditionError(
+                "No function spaces defined. Create one first.",
+                suggestion="Use create_function_space() before solve_eigenvalue().",
+            )
+        space_name = next(iter(session.function_spaces))
+    space_info = session.get_space(space_name)
+    V = space_info.space
+
+    # Build UFL namespace and evaluate forms
+    from ..ufl_context import build_namespace, safe_evaluate
+
+    ns = build_namespace(session, space_info.mesh_name)
+    u_trial = ufl.TrialFunction(V)
+    v_test = ufl.TestFunction(V)
+    ns["u"] = u_trial
+    ns["v"] = v_test
+
+    a_form = safe_evaluate(stiffness_form, ns)
+    b_form = safe_evaluate(mass_form, ns)
+
+    t0 = time.perf_counter()
+
+    try:
+        # Collect BCs for this function space
+        bcs_list = [
+            bc_info.bc for bc_info in session.bcs.values()
+            if bc_info.space_name == space_name
+        ]
+
+        # Compile and assemble matrices with BCs applied.
+        # assemble_matrix(bcs=...) correctly zeros rows/columns for constrained
+        # DOFs and sets diagonal to 1.0, preserving matrix symmetry.
+        # This creates spurious eigenvalue=1.0 (diag(A)/diag(B) = 1) which
+        # we filter out below.
+        a_compiled = dolfinx.fem.form(a_form)
+        b_compiled = dolfinx.fem.form(b_form)
+
+        A = dolfinx.fem.petsc.assemble_matrix(a_compiled, bcs=bcs_list)
+        A.assemble()
+        B = dolfinx.fem.petsc.assemble_matrix(b_compiled, bcs=bcs_list)
+        B.assemble()
+
+        # Request extra eigenvalues to compensate for BC-induced spurious
+        # eigenvalue at 1.0. We'll filter it out after solving.
+        request_nev = num_eigenvalues + (1 if bcs_list else 0)
+
+        # Create SLEPc EPS solver
+        from slepc4py import SLEPc
+
+        eps = SLEPc.EPS().create(A.getComm())
+        eps.setOperators(A, B)
+        eps.setProblemType(SLEPc.EPS.ProblemType.GHEP)
+
+        # Configure solver type
+        eps_type_map = {
+            "krylovschur": SLEPc.EPS.Type.KRYLOVSCHUR,
+            "lanczos": SLEPc.EPS.Type.LANCZOS,
+            "arnoldi": SLEPc.EPS.Type.ARNOLDI,
+            "lapack": SLEPc.EPS.Type.LAPACK,
+            "power": SLEPc.EPS.Type.POWER,
+        }
+        eps.setType(eps_type_map[eps_type])
+
+        # Configure which eigenvalues to find
+        which_map = {
+            "smallest_magnitude": SLEPc.EPS.Which.SMALLEST_MAGNITUDE,
+            "largest_magnitude": SLEPc.EPS.Which.LARGEST_MAGNITUDE,
+            "smallest_real": SLEPc.EPS.Which.SMALLEST_REAL,
+            "largest_real": SLEPc.EPS.Which.LARGEST_REAL,
+            "target_magnitude": SLEPc.EPS.Which.TARGET_MAGNITUDE,
+            "target_real": SLEPc.EPS.Which.TARGET_REAL,
+        }
+        eps.setWhichEigenpairs(which_map[which])
+
+        if target is not None:
+            eps.setTarget(target)
+            st = eps.getST()
+            st.setType(SLEPc.ST.Type.SINVERT)
+
+        eps.setDimensions(nev=request_nev)
+        eps.setFromOptions()
+        eps.solve()
+
+    except DOLFINxMCPError:
+        raise
+    except Exception as exc:
+        raise SolverError(
+            f"Eigenvalue solver failed: {exc}",
+            suggestion="Check stiffness and mass forms. Ensure the problem is well-posed.",
+        ) from exc
+
+    wall_time = time.perf_counter() - t0
+
+    # Extract results
+    nconv = eps.getConverged()
+
+    # POST-1: at least one eigenvalue must converge
+    if nconv <= 0:
+        raise SolverError(
+            f"Eigenvalue solver converged 0 eigenvalues (requested {num_eigenvalues}).",
+            suggestion="Increase matrix size, check forms, or try a different eps_type.",
+        )
+
+    eigenvalues = []
+    eigenvector_names = []
+
+    # When BCs are applied, assemble_matrix sets diagonal=1 for constrained
+    # DOFs in both A and B, creating a spurious eigenvalue at exactly 1.0.
+    # We detect and skip these (tolerance for float comparison).
+    _BC_SPURIOUS_TOL = 1e-10
+    out_idx = 0
+
+    for i in range(nconv):
+        if out_idx >= num_eigenvalues:
+            break
+
+        # Get eigenvalue
+        eigval = eps.getEigenvalue(i)
+
+        # Skip BC-induced spurious eigenvalue = 1.0
+        if bcs_list and abs(eigval.real - 1.0) < _BC_SPURIOUS_TOL and abs(eigval.imag) < _BC_SPURIOUS_TOL:
+            continue
+
+        eigenvalues.append({
+            "index": out_idx,
+            "real": float(eigval.real),
+            "imag": float(eigval.imag),
+        })
+
+        # Get eigenvector
+        vr = dolfinx.fem.Function(V)
+        vi = dolfinx.fem.Function(V)
+        eps.getEigenvector(i, vr.x.petsc_vec, vi.x.petsc_vec)
+        vr.x.scatter_forward()
+
+        # POST-2: eigenvector must be finite
+        if not np.isfinite(vr.x.array).all():
+            raise PostconditionError(
+                f"Eigenvector {out_idx} contains NaN or Inf values."
+            )
+
+        # Register eigenvector in session
+        vec_name = f"{solution_prefix}_{out_idx}"
+        from ..session import FunctionInfo
+        session.functions[vec_name] = FunctionInfo(
+            name=vec_name,
+            function=vr,
+            space_name=space_name,
+            description=f"Eigenvector {out_idx} (eigenvalue={eigval.real:.6g})",
+        )
+        eigenvector_names.append(vec_name)
+        out_idx += 1
+
+    # POST-3: eigenvalues list non-empty
+    if not eigenvalues:
+        raise PostconditionError("Eigenvalues list is empty despite nconv > 0.")
+
+    # INV-1: session invariants
+    if __debug__:
+        session.check_invariants()
+
+    # Clean up
+    eps.destroy()
+
+    logger.info(
+        "Eigenvalue solve: %d converged, eps_type=%s, which=%s, wall_time=%.3fs",
+        nconv, eps_type, which, wall_time,
+    )
+
+    return {
+        "num_converged": nconv,
+        "eigenvalues": eigenvalues,
+        "eigenvectors": eigenvector_names,
+        "wall_time": round(wall_time, 4),
+        "solver_type": eps_type,
+    }

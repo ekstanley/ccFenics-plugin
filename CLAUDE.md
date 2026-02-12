@@ -1,6 +1,6 @@
 # DOLFINx MCP Server
 
-MCP server for FEniCSx/DOLFINx finite element computing. Version 0.7.0.
+MCP server for FEniCSx/DOLFINx finite element computing. Version 0.8.0.
 
 ## Quick Reference
 
@@ -60,7 +60,7 @@ src/dolfinx_mcp/
         mesh.py          9 mesh tools
         spaces.py        2 function space tools
         problem.py       3 problem definition tools
-        solver.py        4 solver tools (solve [+nullspace_mode], solve_time_dependent, get_solver_diagnostics, solve_nonlinear)
+        solver.py        5 solver tools (solve [+nullspace_mode], solve_time_dependent, get_solver_diagnostics, solve_nonlinear, solve_eigenvalue)
         postprocess.py   6 post-processing tools
         interpolation.py 3 interpolation tools
         session_mgmt.py  5 session management tools
@@ -227,6 +227,10 @@ The `.claude/` directory adds FEM domain intelligence on top of the 32 MCP tools
 | `fem-workflow-solver-config` | "PETSc options", "solver configuration", "JIT options" |
 | `fem-workflow-custom-newton` | "custom Newton", "Newton loop", "load stepping" |
 | `fem-workflow-convergence-rates` | "convergence rate", "mesh refinement study", "h-refinement" |
+| `fem-workflow-cahn-hilliard` | "Cahn-Hilliard", "phase field", "spinodal decomposition", "Allen-Cahn" |
+| `fem-workflow-biharmonic` | "biharmonic", "plate bending", "fourth-order PDE", "nabla^4" |
+| `fem-workflow-dg-formulation` | "DG", "discontinuous Galerkin", "interior penalty", "SIPG", "jump" |
+| `fem-workflow-eigenvalue` | "eigenvalue", "eigenmodes", "modal analysis", "natural frequencies" |
 | `fem-workflow-interpolation` | "interpolate function", "L2 projection", "transfer between spaces" |
 | `fem-workflow-visualization` | "plot solution", "export VTK", "visualize results" |
 | `fem-workflow-functionals` | "compute integral", "evaluate at point", "functional value" |

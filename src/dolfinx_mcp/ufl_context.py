@@ -105,6 +105,11 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
         "as_tensor": ufl.as_tensor,
         "as_vector": ufl.as_vector,
         "as_matrix": ufl.as_matrix,
+        # UFL DG operators (jump/average across facets)
+        "jump": ufl.jump,
+        "avg": ufl.avg,
+        "cell_avg": ufl.cell_avg,
+        "facet_avg": ufl.facet_avg,
         # UFL math functions
         "sqrt": ufl.sqrt,
         "exp": ufl.exp,
@@ -195,7 +200,7 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
         ns[fname] = finfo.function
 
     if __debug__:
-        _required = {"dx", "ds", "inner", "grad", "x"}
+        _required = {"dx", "ds", "inner", "grad", "x", "jump", "avg"}
         missing = _required - ns.keys()
         if missing:
             raise PostconditionError(

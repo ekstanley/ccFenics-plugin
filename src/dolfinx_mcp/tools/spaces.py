@@ -32,6 +32,7 @@ async def create_function_space(
     family: str = "Lagrange",
     degree: int = 1,
     shape: list[int] | None = None,
+    variant: str | None = None,
     mesh_name: str | None = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
@@ -43,11 +44,13 @@ async def create_function_space(
         degree: Polynomial degree.
         shape: Component shape for vector/tensor spaces (e.g. [2] for 2D vector).
             Omit for scalar spaces.
+        variant: Lagrange element variant (e.g. "equispaced", "gll_warped").
+            Only applicable for Lagrange-family elements.
         mesh_name: Which mesh to build on. Defaults to the active mesh.
 
     Returns:
         dict with name, mesh_name, element_family, element_degree, num_dofs,
-        and optionally shape (list of ints, present for vector/tensor spaces).
+        and optionally shape and variant.
     """
     # Preconditions
     if not name:
@@ -66,6 +69,17 @@ async def create_function_space(
             raise PreconditionError(
                 f"All shape dimensions must be positive integers, got {shape}.",
             )
+    # Validate variant
+    _VALID_VARIANTS = frozenset({
+        "equispaced", "gll_warped", "gll_isaac", "gll",
+        "chebyshev_warped", "chebyshev_isaac",
+        "gl_warped", "gl_isaac", "legendre", "bernstein",
+    })
+    if variant is not None and variant not in _VALID_VARIANTS:
+        raise PreconditionError(
+            f"variant must be one of {sorted(_VALID_VARIANTS)} or None, got '{variant}'.",
+            suggestion="Common variants: 'equispaced', 'gll_warped', 'legendre'.",
+        )
 
     import dolfinx.fem
 
@@ -81,7 +95,22 @@ async def create_function_space(
     mesh = mesh_info.mesh
 
     try:
-        if shape is not None:
+        if variant is not None:
+            import basix
+            import basix.ufl
+            variant_enum = getattr(basix.LagrangeVariant, variant, None)
+            if variant_enum is None:
+                raise DOLFINxAPIError(
+                    f"Unknown Lagrange variant '{variant}' in basix.",
+                    suggestion=f"Valid variants: {sorted(_VALID_VARIANTS)}",
+                )
+            element = basix.ufl.element(
+                family, mesh.basix_cell(), degree,
+                lagrange_variant=variant_enum,
+                shape=tuple(shape) if shape else (),
+            )
+            V = dolfinx.fem.functionspace(mesh, element)
+        elif shape is not None:
             V = dolfinx.fem.functionspace(mesh, (family, degree, tuple(shape)))
         else:
             V = dolfinx.fem.functionspace(mesh, (family, degree))
@@ -117,10 +146,14 @@ async def create_function_space(
         session.check_invariants()
 
     logger.info(
-        "Created function space '%s' (%s degree %d, %d DOFs)",
+        "Created function space '%s' (%s degree %d, %d DOFs%s)",
         name, family, degree, num_dofs,
+        f", variant={variant}" if variant else "",
     )
-    return fs_info.summary()
+    result = fs_info.summary()
+    if variant is not None:
+        result["variant"] = variant
+    return result
 
 
 @mcp.tool()
