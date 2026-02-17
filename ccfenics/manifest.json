@@ -31,7 +31,10 @@
         "--network", "none",
         "-v", "${user_config.workspace_path}:/workspace",
         "dolfinx-mcp"
-      ]
+      ],
+      "env": {
+        "DOCKER_HOST": "unix:///var/run/docker.sock"
+      }
     }
   },
   "tools": [
@@ -77,7 +80,7 @@
       "type": "directory",
       "title": "Workspace Directory",
       "description": "Directory for simulation output files (VTK, XDMF). Mounted into the Docker container at /workspace.",
-      "default": "${HOME}/dolfinx-workspace",
+      "default": "/tmp/dolfinx-workspace",
       "required": false
     }
   }
