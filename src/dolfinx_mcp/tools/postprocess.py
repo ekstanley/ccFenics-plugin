@@ -563,9 +563,14 @@ async def plot_solution(
     colormap: str = "viridis",
     show_mesh: bool = False,
     output_file: str | None = None,
+    component: int | None = None,
+    return_base64: bool = False,
     ctx: Context = None,
 ) -> dict[str, Any]:
     """Generate a 2D visualization plot of a solution function.
+
+    Supports both scalar and vector function spaces. For vector fields,
+    plots the magnitude by default, or a specific component if specified.
 
     Args:
         function_name: Name of the function to plot. Defaults to the last solution.
@@ -573,13 +578,26 @@ async def plot_solution(
         colormap: Matplotlib colormap name (e.g., "viridis", "plasma", "coolwarm").
         show_mesh: Whether to show mesh edges on the plot.
         output_file: Output filename. Defaults to "/workspace/plot.png".
+        component: For vector fields, which component to plot (0-indexed).
+            If None (default), plots the magnitude for vector fields.
+            Ignored for scalar fields.
+        return_base64: If True, include the PNG image as a base64-encoded string
+            in the response under the "image_base64" key.
 
     Returns:
-        dict with file_path (str), plot_type (str), and file_size_bytes (int).
+        dict with file_path (str), plot_type (str), file_size_bytes (int),
+        is_vector (bool), and optionally component_plotted, num_components,
+        and image_base64.
     """
     # Preconditions: validate inputs before expensive imports
     if plot_type not in ("contour", "warp"):
         raise PreconditionError(f"plot_type must be 'contour' or 'warp', got '{plot_type}'.")
+
+    # PRE-V1: component validation
+    if component is not None and (not isinstance(component, int) or component < 0):
+        raise PreconditionError(
+            f"component must be a non-negative integer, got {component!r}."
+        )
 
     # Validate output path within /workspace (early, before session/imports)
     output_path = _validate_output_path(output_file or "plot.png")
@@ -596,6 +614,7 @@ async def plot_solution(
 
     # Try to import pyvista
     try:
+        import numpy as np
         import pyvista
         from dolfinx.plot import vtk_mesh
     except ImportError as exc:
@@ -604,16 +623,49 @@ async def plot_solution(
             suggestion="Install pyvista in the container or use export_solution + external tools.",
         ) from exc
 
+    # Detect vector vs scalar field
+    # DOLFINx 0.10+: _BasixElement uses reference_value_shape, not value_shape
+    value_shape = V.ufl_element().reference_value_shape
+    is_vector = len(value_shape) > 0
+    num_components = value_shape[0] if is_vector else 1
+
+    # PRE-V2: component range check for vector fields
+    if component is not None and is_vector and component >= num_components:
+        raise PreconditionError(
+            f"component={component} out of range for {num_components}-component vector field.",
+            suggestion=f"Valid components: 0 to {num_components - 1}.",
+        )
+
     # Enable headless rendering
     pyvista.OFF_SCREEN = True
 
     try:
         # Suppress VTK/PyVista stdout to protect stdio JSON-RPC transport
         with _suppress_stdout():
-            # Create VTK mesh
+            # Create VTK mesh and assign scalar data
             topology, cell_types, geometry = vtk_mesh(V)
             grid = pyvista.UnstructuredGrid(topology, cell_types, geometry)
-            grid.point_data["solution"] = uh.x.array.real
+
+            if is_vector:
+                # Reshape DOF array into (num_points, num_components)
+                num_points = geometry.shape[0]
+                values = uh.x.array.real.reshape(num_points, num_components)
+
+                if component is not None:
+                    plot_data = values[:, component]
+                    component_plotted = component
+                else:
+                    # Magnitude: sqrt(sum of squares)
+                    plot_data = np.sqrt(np.sum(values**2, axis=1))
+                    component_plotted = "magnitude"
+            else:
+                plot_data = uh.x.array.real
+                component_plotted = None
+
+            # POST-V3: scalar data shape check
+            assert plot_data.ndim == 1, f"Expected 1D plot data, got shape {plot_data.shape}"
+
+            grid.point_data["solution"] = plot_data
 
             # Create plotter
             plotter = pyvista.Plotter(off_screen=True)
@@ -645,11 +697,29 @@ async def plot_solution(
             session.check_invariants()
 
         logger.info("Generated %s plot at %s (%d bytes)", plot_type, output_path, file_size)
-        return {
+        result: dict[str, Any] = {
             "file_path": output_path,
             "plot_type": plot_type,
             "file_size_bytes": file_size,
+            "is_vector": is_vector,
         }
+
+        if is_vector:
+            result["component_plotted"] = component_plotted
+            result["num_components"] = num_components
+
+        # Optionally return base64-encoded PNG
+        if return_base64:
+            import base64
+            with open(output_path, "rb") as f:
+                raw = f.read()
+            b64_content = base64.b64encode(raw).decode("ascii")
+            # POST-B1/B2: base64 content is non-empty and decodable
+            if not b64_content:
+                raise PostconditionError("Base64 encoding produced empty content.")
+            result["image_base64"] = b64_content
+
+        return result
 
     except DOLFINxMCPError:
         raise

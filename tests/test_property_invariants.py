@@ -1,7 +1,7 @@
 """Property-based tests using Hypothesis for SessionState invariants.
 
 Properties tested:
-  P1: Any valid operation sequence preserves all 7 invariants
+  P1: Any valid operation sequence preserves all 8 invariants
   P2: Cascade deletion removes ALL dependents (no partial removal)
   P3: Cleanup always produces empty state
   P4: Registry keys always match entry names (key == Info.name)
@@ -9,10 +9,13 @@ Properties tested:
   P6: After removeMesh(m), no registry references m
   P7: Forms cleared wholesale when spaces deleted (INV-8 cascade)
   P8: Forms non-empty implies spaces non-empty (INV-8 invariant)
+  P9: Extension maps for read_workspace_file have no overlap
+  P10: Path traversal attacks always rejected by read_workspace_file
 """
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -218,3 +221,65 @@ class TestFormSpaceInvariant:
                     f"INV-8 violated: forms={list(session.forms.keys())} "
                     f"but function_spaces is empty"
                 )
+
+
+class TestExtensionMapNoOverlap:
+    """P9: Binary and text extension maps have no overlap."""
+
+    @given(ext=st.from_regex(r"\.[a-z0-9]{1,6}", fullmatch=True))
+    @settings(max_examples=200)
+    def test_extension_not_in_both_maps(self, ext: str) -> None:
+        from dolfinx_mcp.tools.session_mgmt import (
+            _BINARY_EXTENSIONS,
+            _TEXT_EXTENSIONS,
+        )
+
+        # An extension can be in binary OR text, never both
+        assert not (ext in _BINARY_EXTENSIONS and ext in _TEXT_EXTENSIONS), (
+            f"Extension '{ext}' in both _BINARY_EXTENSIONS and _TEXT_EXTENSIONS"
+        )
+
+
+class TestPathTraversalDefense:
+    """P10: Adversarial paths always rejected by read_workspace_file."""
+
+    @given(
+        path=st.one_of(
+            # Relative traversal attacks
+            st.text(
+                alphabet=st.sampled_from("abcdefghijklmnopqrstuvwxyz0123456789_/.-"),
+                min_size=1,
+                max_size=50,
+            ).filter(lambda s: ".." in s),
+            # Known attack vectors
+            st.sampled_from([
+                "../etc/passwd",
+                "/etc/shadow",
+                "/workspace/../etc/passwd",
+                "../../../../../../etc/passwd",
+                "/workspace/../../etc/shadow",
+            ]),
+        )
+    )
+    @settings(max_examples=200)
+    @pytest.mark.asyncio
+    async def test_traversal_always_rejected(self, path: str) -> None:
+        from unittest.mock import MagicMock
+
+        from dolfinx_mcp.session import MeshInfo, SessionState
+        from dolfinx_mcp.tools.session_mgmt import read_workspace_file
+
+        session = SessionState()
+        session.meshes["m1"] = MeshInfo(
+            name="m1", mesh=MagicMock(), cell_type="triangle",
+            num_cells=100, num_vertices=64, gdim=2, tdim=2,
+        )
+        session.active_mesh = "m1"
+        ctx = MagicMock()
+        ctx.request_context.lifespan_context = session
+
+        result = await read_workspace_file(file_path=path, ctx=ctx)
+
+        assert result.get("error") in (
+            "FILE_IO_ERROR", "PRECONDITION_VIOLATED",
+        ), f"Path '{path}' was not rejected: {result}"

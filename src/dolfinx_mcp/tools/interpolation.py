@@ -298,7 +298,7 @@ async def create_discrete_operator(
 async def project(
     name: str,
     target_space: str,
-    expression: str | None = None,
+    expression: str | int | float | None = None,
     source_function: str | None = None,
     ctx: Context = None,
 ) -> dict[str, Any]:
@@ -313,12 +313,17 @@ async def project(
     Args:
         name: Name for the projected function result.
         target_space: Name of the target function space.
-        expression: UFL expression string to project.
+        expression: UFL expression string to project. Numeric values (int, float)
+            are automatically converted to strings (e.g., 0 becomes "0").
         source_function: Name of an existing function to project.
 
     Returns:
         dict with name, l2_norm, min_value, max_value of the projection.
     """
+    # Coerce numeric expression to string for AI agent convenience
+    if isinstance(expression, (int, float)):
+        expression = str(expression)
+
     # Preconditions: validate before lazy imports
     if not name or not name.strip():
         raise PreconditionError("name must be non-empty.")

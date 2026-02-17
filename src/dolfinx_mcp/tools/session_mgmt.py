@@ -11,6 +11,7 @@ from .._app import mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
+    FileIOError,
     PostconditionError,
     PreconditionError,
     handle_tool_errors,
@@ -340,6 +341,10 @@ async def remove_object(
                 )
             session._remove_space_dependents(name)
             del session.function_spaces[name]
+            # INV-8: forms require at least one function_space
+            if not session.function_spaces:
+                session.forms.clear()
+                session.ufl_symbols.clear()
             removed["cascade"] = True
 
         else:
@@ -376,3 +381,164 @@ async def remove_object(
 
     logger.info("Removed %s '%s'", object_type, name)
     return removed
+
+
+# MIME type mapping for auto-detection in read_workspace_file
+_BINARY_EXTENSIONS = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".xdmf": "application/octet-stream",
+    ".h5": "application/octet-stream",
+}
+
+_TEXT_EXTENSIONS = {
+    ".pvd": "application/xml",
+    ".vtu": "application/xml",
+    ".vtk": "application/xml",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".txt": "text/plain",
+}
+
+_MAX_FILE_SIZE = 10_485_760  # 10 MB
+
+
+@mcp.tool()
+@handle_tool_errors
+async def read_workspace_file(
+    file_path: str,
+    encoding: str = "auto",
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """Read a file from the /workspace/ directory with automatic encoding detection.
+
+    Use this to retrieve images (PNG, JPEG) as base64 or text files (VTK, CSV, JSON)
+    as plain text. Useful for MCP clients that cannot directly access Docker volume
+    mounts.
+
+    Args:
+        file_path: Path to the file, relative to /workspace/ or absolute.
+            Examples: "solution.png", "/workspace/output.vtu"
+        encoding: How to encode the file content in the response.
+            "auto" (default) detects from extension: base64 for images/binary,
+            text for VTK/CSV/JSON/txt.
+            "base64" forces base64 encoding.
+            "text" forces UTF-8 text encoding.
+
+    Returns:
+        dict with file_path (str), encoding ("base64" or "text"),
+        content (str), file_size_bytes (int), and mime_type (str).
+    """
+    import base64
+    import os
+    from pathlib import Path
+
+    # PRE-1: file_path non-empty
+    if not file_path or not file_path.strip():
+        raise PreconditionError("file_path must be a non-empty string.")
+
+    # PRE-2: encoding is valid
+    valid_encodings = ("auto", "base64", "text")
+    if encoding not in valid_encodings:
+        raise PreconditionError(
+            f"encoding must be one of {valid_encodings}, got '{encoding}'."
+        )
+
+    # Resolve path: treat relative paths as relative to /workspace/
+    if not file_path.startswith("/"):
+        resolved = Path("/workspace") / file_path
+    else:
+        resolved = Path(file_path)
+
+    resolved = resolved.resolve()
+
+    # PRE-3: path traversal check — must be within /workspace/
+    workspace_root = Path("/workspace").resolve()
+    if not str(resolved).startswith(str(workspace_root) + os.sep) and resolved != workspace_root:
+        raise FileIOError(
+            f"Path '{file_path}' resolves outside /workspace/.",
+            suggestion="Provide a path within /workspace/ (e.g. 'solution.png' or '/workspace/output.vtu').",
+        )
+
+    # PRE-4: file exists
+    if not resolved.is_file():
+        raise FileIOError(
+            f"File not found: {resolved}",
+            suggestion="Check the file path with get_session_state or export_solution first.",
+        )
+
+    # PRE-5: file size limit
+    file_size = resolved.stat().st_size
+    if file_size > _MAX_FILE_SIZE:
+        raise PreconditionError(
+            f"File size {file_size} bytes exceeds 10MB limit.",
+            suggestion="Use export_solution to write a smaller file, or access the Docker volume directly.",
+        )
+
+    # Determine encoding and MIME type
+    ext = resolved.suffix.lower()
+
+    if encoding == "auto":
+        if ext in _BINARY_EXTENSIONS:
+            actual_encoding = "base64"
+            mime_type = _BINARY_EXTENSIONS[ext]
+        elif ext in _TEXT_EXTENSIONS:
+            actual_encoding = "text"
+            mime_type = _TEXT_EXTENSIONS[ext]
+        else:
+            actual_encoding = "text"
+            mime_type = "text/plain"
+    else:
+        actual_encoding = encoding
+        if ext in _BINARY_EXTENSIONS:
+            mime_type = _BINARY_EXTENSIONS[ext]
+        elif ext in _TEXT_EXTENSIONS:
+            mime_type = _TEXT_EXTENSIONS[ext]
+        else:
+            mime_type = "application/octet-stream" if actual_encoding == "base64" else "text/plain"
+
+    # Read file content
+    try:
+        if actual_encoding == "base64":
+            raw = resolved.read_bytes()
+            content = base64.b64encode(raw).decode("ascii")
+        else:
+            content = resolved.read_text(encoding="utf-8")
+    except Exception as exc:
+        raise FileIOError(
+            f"Failed to read file '{resolved}': {exc}",
+            suggestion="Check file permissions and encoding.",
+        ) from exc
+
+    # POST-2: content non-empty
+    if not content:
+        raise PostconditionError(
+            "File content is empty.",
+            suggestion="The file exists but contains no data.",
+        )
+
+    # POST-4: base64 is decodable (always-on for base64)
+    if actual_encoding == "base64":
+        try:
+            decoded = base64.b64decode(content)
+        except Exception:
+            raise PostconditionError("Generated base64 content is not decodable.")
+        # POST-5: decoded size matches file size
+        if len(decoded) != file_size:
+            raise PostconditionError(
+                f"Base64 decoded size ({len(decoded)}) does not match file size ({file_size})."
+            )
+
+    session = _get_session(ctx)
+    if __debug__:
+        session.check_invariants()
+
+    logger.info("Read workspace file '%s' (%s, %d bytes)", resolved, actual_encoding, file_size)
+    return {
+        "file_path": str(resolved),
+        "encoding": actual_encoding,
+        "content": content,
+        "file_size_bytes": file_size,
+        "mime_type": mime_type,
+    }

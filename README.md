@@ -6,7 +6,7 @@ MCP server for FEniCSx/DOLFINx finite element computing.
 
 **Version**: 0.9.0 | **License**: MIT | **Python**: >= 3.10 | **DOLFINx**: 0.10.0
 
-Exposes 33 tools, 6 prompt templates, and 6 resources for mesh generation,
+Exposes 34 tools, 6 prompt templates, and 6 resources for mesh generation,
 function space creation, PDE solving, and post-processing through the
 [Model Context Protocol](https://modelcontextprotocol.io/). Runs inside a
 Docker container with the full DOLFINx/PETSc stack.
@@ -132,7 +132,7 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 
 ---
 
-## Tools (33)
+## Tools (34)
 
 ### Mesh Operations (9)
 
@@ -192,7 +192,7 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 | `project` | L2-project an expression onto a function space |
 | `create_discrete_operator` | Build a discrete operator matrix |
 
-### Session Management (5)
+### Session Management (6)
 
 | Tool | Description |
 |------|-------------|
@@ -201,6 +201,7 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 | `run_custom_code` | Execute Python code in the session namespace |
 | `assemble` | Assemble UFL forms into scalars, vectors, or matrices |
 | `remove_object` | Remove an object with cascade deletion of dependents |
+| `read_workspace_file` | Read files from /workspace/ as base64 (images) or text (VTK, CSV) |
 
 ---
 
@@ -276,11 +277,11 @@ Use IPython magics inside JupyterLab:
 
 ## Design-by-Contract
 
-All 33 tools enforce runtime contracts:
+All 34 tools enforce runtime contracts:
 
 - **Preconditions**: Input validation (parameter types, ranges, existence checks)
 - **Postconditions**: Output validation (return structure, value constraints)
-- **Invariants**: 7 referential integrity invariants on SessionState
+- **Invariants**: 8 referential integrity invariants on SessionState
 
 Contract violations return structured error responses:
 
@@ -301,7 +302,7 @@ Error codes: `NO_ACTIVE_MESH`, `MESH_NOT_FOUND`, `FUNCTION_SPACE_NOT_FOUND`,
 
 ## Formal Verification (Lean 4)
 
-The 7 referential integrity invariants of `SessionState` are formally verified
+The 8 referential integrity invariants of `SessionState` are formally verified
 in Lean 4 with machine-checked proofs. Located in `.outline/proofs/DolfinxProofs/`.
 
 **20 theorems, 4 helper lemmas, zero `sorry` placeholders.**
@@ -310,7 +311,7 @@ Key results:
 
 | Theorem | What it proves |
 |---------|---------------|
-| `freshState_valid` | Empty session satisfies all 7 invariants |
+| `freshState_valid` | Empty session satisfies all 8 invariants |
 | `registerMesh_valid` | Adding a mesh preserves invariants |
 | `registerFunctionSpace_valid` | Adding a function space preserves invariants |
 | `removeMesh_valid` | **Cascade deletion** of mesh + dependents preserves invariants |
@@ -346,7 +347,7 @@ pytest tests/ --ignore=tests/test_runtime_contracts.py -v
 docker build -t dolfinx-mcp .
 pytest tests/test_runtime_contracts.py -v
 
-# Production readiness suite (all 33 tools via MCP protocol)
+# Production readiness suite (all 34 tools via MCP protocol)
 python examples/production_readiness.py --verbose
 
 # Lint
@@ -359,7 +360,7 @@ ruff check src/ tests/ examples/
 src/dolfinx_mcp/
     server.py              Entry point
     _app.py                FastMCP instance + lifespan
-    session.py             SessionState (8 registries, 7 invariants)
+    session.py             SessionState (8 registries, 8 invariants)
     errors.py              13 error classes + decorator
     ufl_context.py         Restricted UFL expression evaluation
     tools/

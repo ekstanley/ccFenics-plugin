@@ -283,9 +283,10 @@ class SessionState:
     # --- Invariant verification ---
 
     def check_invariants(self) -> None:
-        """Verify all session referential integrity invariants.
+        """Verify all 8 session referential integrity invariants (INV-1 through INV-8).
 
-        Raises InvariantError if any cross-reference is dangling.
+        Raises InvariantError if any cross-reference is dangling or
+        structural constraint is violated.
         """
         from .errors import InvariantError
 
@@ -340,6 +341,12 @@ class SessionState:
                 raise InvariantError(
                     f"EntityMap '{name}' child_mesh '{em.child_mesh}' not found"
                 )
+
+        # INV-8: forms non-empty implies at least one function_space exists
+        if self.forms and not self.function_spaces:
+            raise InvariantError(
+                f"Forms {list(self.forms.keys())} exist but no function_spaces registered"
+            )
 
     # --- Typed accessors ---
 

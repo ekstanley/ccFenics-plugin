@@ -17,6 +17,7 @@ from .._app import mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
+    InvalidUFLExpressionError,
     PostconditionError,
     PreconditionError,
     handle_tool_errors,
@@ -141,11 +142,39 @@ async def define_variational_form(
     ns["u"] = u
     ns["v"] = v
 
-    # Evaluate bilinear form
-    a_ufl = safe_evaluate(bilinear, ns)
+    # Detect mixed space for enhanced error messages
+    is_mixed = V_trial_info.element_family == "Mixed"
 
-    # Evaluate linear form
-    L_ufl = safe_evaluate(linear, ns)
+    # Evaluate bilinear form with mixed-space-aware error handling
+    try:
+        a_ufl = safe_evaluate(bilinear, ns)
+    except InvalidUFLExpressionError as exc:
+        if is_mixed and "is not defined" in str(exc):
+            raise InvalidUFLExpressionError(
+                str(exc),
+                suggestion=(
+                    "For mixed function spaces, decompose trial/test functions "
+                    "using split(): e.g. split(u)[0] for velocity, split(u)[1] "
+                    "for pressure, split(v)[0] and split(v)[1] for test functions. "
+                    "Do NOT use separate variable names like 'p' or 'q'."
+                ),
+            ) from exc
+        raise
+
+    # Evaluate linear form with mixed-space-aware error handling
+    try:
+        L_ufl = safe_evaluate(linear, ns)
+    except InvalidUFLExpressionError as exc:
+        if is_mixed and "is not defined" in str(exc):
+            raise InvalidUFLExpressionError(
+                str(exc),
+                suggestion=(
+                    "For mixed function spaces, decompose trial/test functions "
+                    "using split(): e.g. split(u)[0] for velocity, split(u)[1] "
+                    "for pressure, split(v)[0] and split(v)[1] for test functions."
+                ),
+            ) from exc
+        raise
 
     # Compile forms
     try:
@@ -153,9 +182,15 @@ async def define_variational_form(
     except DOLFINxMCPError:
         raise
     except Exception as exc:
+        suggestion = "Check that the bilinear form involves both u (trial) and v (test)."
+        if is_mixed:
+            suggestion += (
+                " For saddle-point systems (Stokes), use MUMPS solver: "
+                "petsc_options={'pc_factor_mat_solver_type': 'mumps'}."
+            )
         raise DOLFINxAPIError(
             f"Failed to compile bilinear form: {exc}",
-            suggestion="Check that the bilinear form involves both u (trial) and v (test).",
+            suggestion=suggestion,
         ) from exc
 
     try:

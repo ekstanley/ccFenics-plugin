@@ -50,7 +50,7 @@ src/dolfinx_mcp/
     __init__.py          Version string
     server.py            Entry point, imports all modules for registration
     _app.py              FastMCP instance + app_lifespan
-    session.py           SessionState (8 registries, 7 invariants)
+    session.py           SessionState (8 registries, 8 invariants)
     errors.py            13 error classes + @handle_tool_errors decorator
     ufl_context.py       Token blocklist + restricted UFL expression evaluation
     eval_helpers.py      Shared numpy expression + boundary marker helpers
@@ -63,7 +63,7 @@ src/dolfinx_mcp/
         solver.py        5 solver tools (solve [+nullspace_mode], solve_time_dependent, get_solver_diagnostics, solve_nonlinear, solve_eigenvalue)
         postprocess.py   6 post-processing tools
         interpolation.py 3 interpolation tools
-        session_mgmt.py  5 session management tools
+        session_mgmt.py  6 session management tools
     prompts/templates.py 6 workflow prompt templates
     resources/providers.py 6 URI resources
 ```
@@ -110,7 +110,7 @@ Preserves `__signature__` for FastMCP schema generation.
 
 `SessionState` has 8 typed registries: meshes, function_spaces, functions, bcs, forms, solutions, mesh_tags, entity_maps.
 
-7 referential integrity invariants (INV-1 through INV-7) verified by `check_invariants()`.
+8 referential integrity invariants (INV-1 through INV-8) verified by `check_invariants()`.
 Cascade deletion: removing a mesh removes all dependent spaces, functions, BCs, solutions, tags, and entity maps.
 
 ## Security Model
@@ -196,7 +196,7 @@ All run on Python 3.12, Ubuntu latest.
 
 ## Plugin Layer (Claude Code Integration)
 
-The `.claude/` directory adds FEM domain intelligence on top of the 33 MCP tools.
+The `.claude/` directory adds FEM domain intelligence on top of the 34 MCP tools.
 
 ### Skills (`.claude/skills/`)
 

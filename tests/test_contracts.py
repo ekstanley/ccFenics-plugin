@@ -241,6 +241,23 @@ class TestSessionInvariants:
         # Empty session should pass invariants
         session.check_invariants()
 
+    def test_check_invariants_forms_without_spaces(self):
+        """INV-8: forms non-empty with no function_spaces must raise."""
+        session = SessionState()
+        session.forms["bilinear"] = _make_form_info("bilinear")
+        # No function_spaces registered — INV-8 violated
+        with pytest.raises(InvariantError, match="[Ff]orms.*no function_spaces"):
+            session.check_invariants()
+
+    def test_check_invariants_forms_with_spaces_ok(self):
+        """INV-8: forms non-empty with function_spaces is valid."""
+        session = SessionState()
+        session.meshes["m1"] = _make_mesh_info("m1")
+        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.forms["bilinear"] = _make_form_info("bilinear")
+        # Should NOT raise — forms exist AND function_spaces exist
+        session.check_invariants()
+
 
 # ---------------------------------------------------------------------------
 # Phase 4: Tool precondition tests (5 tests, mocked context)

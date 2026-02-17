@@ -19,6 +19,7 @@ Groups:
     F (3): Phase 14 tools -- remove_object, compute_mesh_quality, project
     G (3): Nonlinear solver -- solve_nonlinear postconditions and session state
     H (2): Eval helpers -- shape postcondition and boolean coercion
+    I (1): Pipeline integration -- plot_solution → read_workspace_file round-trip
 """
 
 from __future__ import annotations
@@ -855,3 +856,54 @@ class TestEvalHelperPostconditions:
         marker_bool = make_boundary_marker("np.isclose(x[0], 0.0)")
         result_bool = marker_bool(x)
         assert result_bool.dtype == np.bool_
+
+
+# ---------------------------------------------------------------------------
+# Group I: Pipeline Integration (1 test)
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineIntegration:
+    """Verify end-to-end pipelines spanning multiple tool modules."""
+
+    @pytest.mark.asyncio
+    async def test_plot_then_read_roundtrip(self, session, ctx):
+        """I1: plot_solution → read_workspace_file round-trip.
+
+        Solves Poisson, plots with return_base64=True, then reads the
+        same PNG via read_workspace_file. Both base64 strings must decode
+        to identical bytes, validating the full pipeline.
+        """
+        import base64
+
+        from dolfinx_mcp.tools.postprocess import plot_solution
+        from dolfinx_mcp.tools.session_mgmt import read_workspace_file
+
+        await _setup_poisson(session, ctx)
+
+        # Plot with base64 return
+        plot_result = await plot_solution(
+            output_file="/workspace/pipeline_test.png",
+            return_base64=True,
+            ctx=ctx,
+        )
+        assert "error" not in plot_result
+        assert "image_base64" in plot_result
+        plot_b64 = plot_result["image_base64"]
+
+        # Read the same file via read_workspace_file
+        read_result = await read_workspace_file(
+            file_path=plot_result["file_path"],
+            ctx=ctx,
+        )
+        assert "error" not in read_result
+        assert read_result["encoding"] == "base64"
+        read_b64 = read_result["content"]
+
+        # Both must decode to identical bytes
+        plot_bytes = base64.b64decode(plot_b64)
+        read_bytes = base64.b64decode(read_b64)
+        assert plot_bytes == read_bytes, (
+            f"Round-trip mismatch: plot gave {len(plot_bytes)} bytes, "
+            f"read gave {len(read_bytes)} bytes"
+        )

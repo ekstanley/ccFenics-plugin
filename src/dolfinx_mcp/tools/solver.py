@@ -634,9 +634,8 @@ async def solve_nonlinear(
         available = list(session.functions.keys())
         raise FunctionNotFoundError(
             f"Unknown function '{unknown}' not found. Available: {available}",
-            suggestion="Create the unknown function first via interpolate "
-            "(e.g. interpolate(name='u', expression='0.0',"
-            " function_space='V')).",
+            suggestion="Create the unknown function first via project "
+            "(e.g. project(name='u', target_space='V', expression='0.0')).",
         )
 
     import dolfinx.fem
