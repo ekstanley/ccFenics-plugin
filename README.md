@@ -64,6 +64,31 @@ Just open Claude Code in the repo directory after building the Docker image:
 
 No manual MCP configuration needed.
 
+#### Plugin mode (37 skills, 6 agents, 6 commands)
+
+For the full FEM-aware experience with guided workflows, solver selection, and
+debugging skills, load the bundled plugin:
+
+```bash
+claude --plugin-dir ./ccfenics
+```
+
+Skills are namespaced under `/ccfenics:` (e.g., `/ccfenics:solve-poisson`,
+`/ccfenics:tutorial-chapter`).
+
+### Claude Cowork Users
+
+The `ccfenics/` directory also contains a Desktop Extension manifest for
+installing in the Cowork UI:
+
+1. Build the Docker image: `docker build -t dolfinx-mcp .`
+2. In Cowork, go to **Extensions** and select **Install from folder**
+3. Point it to the `ccfenics/` directory in this repo
+4. The 33 MCP tools become available in your Cowork session
+
+> **Note**: The Docker image must be built locally before the extension can
+> connect to the server. The extension runs `docker run` under the hood.
+
 ### 3. Use
 
 Ask your AI assistant to solve a PDE -- the MCP tools handle the DOLFINx

@@ -1,0 +1,84 @@
+{
+  "manifest_version": "0.3",
+  "name": "ccfenics",
+  "display_name": "DOLFINx FEM Solver",
+  "version": "0.9.0",
+  "description": "FEniCSx/DOLFINx finite element computing — 33 MCP tools for mesh generation, function spaces, variational forms, solvers, and post-processing",
+  "long_description": "MCP server for scientific computing with the FEniCSx/DOLFINx finite element framework. Solve Poisson, elasticity, Stokes, Navier-Stokes, Helmholtz, eigenvalue problems and more. Runs inside a Docker container with the full DOLFINx/PETSc/SLEPc stack.",
+  "author": {
+    "name": "DOLFINx MCP Contributors"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/estanley/ccFenics-plugin"
+  },
+  "homepage": "https://github.com/estanley/ccFenics-plugin",
+  "documentation": "https://github.com/estanley/ccFenics-plugin#readme",
+  "support": "https://github.com/estanley/ccFenics-plugin/issues",
+  "license": "MIT",
+  "keywords": [
+    "fem", "dolfinx", "fenics", "finite-element",
+    "simulation", "pde", "scientific-computing",
+    "poisson", "elasticity", "stokes", "navier-stokes"
+  ],
+  "server": {
+    "type": "binary",
+    "entry_point": "run-server.sh",
+    "mcp_config": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--network", "none",
+        "-v", "${HOME}/dolfinx-workspace:/workspace",
+        "dolfinx-mcp"
+      ]
+    }
+  },
+  "tools": [
+    { "name": "create_unit_square", "description": "Unit square mesh with triangular or quadrilateral elements" },
+    { "name": "create_mesh", "description": "Rectangle or box meshes with custom dimensions" },
+    { "name": "create_custom_mesh", "description": "Import mesh from Gmsh (.msh) file" },
+    { "name": "get_mesh_info", "description": "Inspect mesh properties (cells, vertices, bounding box)" },
+    { "name": "compute_mesh_quality", "description": "Mesh quality metrics (aspect ratio, volume)" },
+    { "name": "mark_boundaries", "description": "Tag boundary facets using coordinate expressions" },
+    { "name": "manage_mesh_tags", "description": "Create and manage cell/facet region markers" },
+    { "name": "refine_mesh", "description": "Uniformly refine an existing mesh" },
+    { "name": "create_submesh", "description": "Extract submesh from tagged regions" },
+    { "name": "create_function_space", "description": "Lagrange, DG, Nedelec, RT, BDM, or CR elements" },
+    { "name": "create_mixed_space", "description": "Mixed function space from component subspaces" },
+    { "name": "set_material_properties", "description": "Define material coefficients and source terms" },
+    { "name": "define_variational_form", "description": "Bilinear and linear forms via UFL expressions" },
+    { "name": "apply_boundary_condition", "description": "Dirichlet boundary conditions (value + locator)" },
+    { "name": "solve", "description": "Direct or iterative linear solvers with preconditioners" },
+    { "name": "solve_time_dependent", "description": "Time stepping: backward/forward Euler, Crank-Nicolson" },
+    { "name": "solve_nonlinear", "description": "Newton solver (SNES) for nonlinear PDEs" },
+    { "name": "solve_eigenvalue", "description": "Generalized eigenvalue problems via SLEPc" },
+    { "name": "get_solver_diagnostics", "description": "Convergence info, iterations, residual norms" },
+    { "name": "compute_error", "description": "L2 or H1 error against an exact solution" },
+    { "name": "evaluate_solution", "description": "Evaluate solution at specified coordinates" },
+    { "name": "query_point_values", "description": "Point queries with geometric cell info" },
+    { "name": "compute_functionals", "description": "Integrate UFL expressions over the domain" },
+    { "name": "export_solution", "description": "Export to XDMF or VTK format" },
+    { "name": "plot_solution", "description": "Contour or warp plots (PNG via PyVista)" },
+    { "name": "interpolate", "description": "Interpolate UFL expression into a function space" },
+    { "name": "project", "description": "L2-project an expression onto a function space" },
+    { "name": "create_discrete_operator", "description": "Build a discrete operator matrix" },
+    { "name": "get_session_state", "description": "List all registered meshes, spaces, functions, solutions" },
+    { "name": "reset_session", "description": "Clear all session state" },
+    { "name": "run_custom_code", "description": "Execute Python code in the session namespace" },
+    { "name": "assemble", "description": "Assemble UFL forms into scalars, vectors, or matrices" },
+    { "name": "remove_object", "description": "Remove an object with cascade deletion of dependents" }
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "linux", "win32"]
+  },
+  "user_config": {
+    "workspace_path": {
+      "type": "directory",
+      "title": "Workspace Directory",
+      "description": "Directory for simulation output files (VTK, XDMF). Mounted into the Docker container at /workspace.",
+      "default": "${HOME}/dolfinx-workspace",
+      "required": false
+    }
+  }
+}
