@@ -1,0 +1,11 @@
+{
+  "name": "ccfenics",
+  "description": "FEniCSx/DOLFINx finite element computing plugin — 33 MCP tools for mesh generation, function spaces, variational forms, solvers, and post-processing",
+  "version": "0.9.0",
+  "author": {
+    "name": "DOLFINx MCP Contributors"
+  },
+  "repository": "https://github.com/estanley/ccFenics-plugin",
+  "license": "MIT",
+  "keywords": ["fem", "dolfinx", "fenics", "finite-element", "simulation", "pde", "scientific-computing"]
+}

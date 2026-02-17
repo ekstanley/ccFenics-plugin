@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "dolfinx-mcp": {
+            "command": "docker",
+            "args": [
+                "run", "--rm", "-i",
+                "--network", "none",
+                "-v", "./workspace:/workspace",
+                "dolfinx-mcp"
+            ]
+        }
+    }
+}

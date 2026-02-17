@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '## FEM Context\nDOLFINx MCP server provides 33 tools for finite element computing.\nSecurity: All UFL expressions pass through _check_forbidden() token blocklist.\nWorkflow: mesh -> space -> material -> form -> BC -> solve -> postprocess.\nAvailable element families: Lagrange (P1-P4), DG, Nedelec, Raviart-Thomas, BDM.\nMixed spaces: Use Taylor-Hood (P2/P1) for Stokes, ensure inf-sup stability.\nNonlinear: Use solve_nonlinear for Newton-method PDEs (residual form + unknown function).\nEigenvalue: Use solve_eigenvalue for generalized eigenvalue problems (SLEPc EPS solver).\nTutorial coverage: 26 topics across 6 groups from jsdokken.com/dolfinx-tutorial + official demos via /tutorial-chapter command.'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "If this tool call includes a UFL or Python expression string (in parameters like 'bilinear', 'linear', 'value', 'expression', 'boundary', 'exact_solution', 'condition', 'code', 'residual', 'jacobian', 'stiffness_form', or 'mass_form'), verify the expression does NOT contain any of these forbidden tokens: import, __, exec, eval, compile, open, os., sys., subprocess, shutil, pathlib, socket, getattr, setattr, delattr, globals, locals, vars, dir(, breakpoint. If a forbidden token is found, BLOCK the tool call and explain which token was detected. This mirrors the server-side _check_forbidden() check from ufl_context.py. If the tool call does not contain expression parameters, approve it without comment.",
+            "model": "haiku"
+          }
+        ]
+      }
+    ]
+  }
+}
