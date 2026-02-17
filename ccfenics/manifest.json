@@ -29,7 +29,7 @@
       "args": [
         "run", "--rm", "-i",
         "--network", "none",
-        "-v", "${HOME}/dolfinx-workspace:/workspace",
+        "-v", "${user_config.workspace_path}:/workspace",
         "dolfinx-mcp"
       ]
     }

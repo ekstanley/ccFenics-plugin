@@ -36,7 +36,9 @@ docker build -t dolfinx-mcp .
 
 ### 2. Configure MCP Client
 
-Add to your MCP client configuration (Claude Desktop, Cursor, VS Code, etc.):
+Add to your MCP client configuration (Claude Desktop, Cursor, VS Code, etc.).
+Change `/path/to/workspace` to the directory where you want simulation output
+(VTK, XDMF files):
 
 ```json
 {
@@ -45,7 +47,7 @@ Add to your MCP client configuration (Claude Desktop, Cursor, VS Code, etc.):
       "command": "docker",
       "args": [
         "run", "--rm", "-i", "--network", "none",
-        "-v", "/tmp/dolfinx-workspace:/workspace",
+        "-v", "/path/to/workspace:/workspace",
         "dolfinx-mcp"
       ]
     }
@@ -78,13 +80,18 @@ Skills are namespaced under `/ccfenics:` (e.g., `/ccfenics:solve-poisson`,
 
 ### Claude Cowork Users
 
-The `ccfenics/` directory also contains a Desktop Extension manifest for
+The `ccfenics/` directory contains a Desktop Extension manifest for
 installing in the Cowork UI:
 
 1. Build the Docker image: `docker build -t dolfinx-mcp .`
 2. In Cowork, go to **Extensions** and select **Install from folder**
 3. Point it to the `ccfenics/` directory in this repo
-4. The 33 MCP tools become available in your Cowork session
+4. When prompted, choose a **Workspace Directory** for simulation output
+5. The 33 MCP tools become available in your Cowork session
+
+The workspace directory is where exported files (VTK, XDMF) are written.
+It defaults to `~/dolfinx-workspace` and can be changed in the extension
+settings after installation.
 
 > **Note**: The Docker image must be built locally before the extension can
 > connect to the server. The extension runs `docker run` under the hood.
