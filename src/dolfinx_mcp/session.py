@@ -154,6 +154,7 @@ class FormInfo:
     form: Any  # dolfinx.fem.Form (compiled)
     ufl_form: Any  # ufl.Form (symbolic)
     description: str = ""
+    trial_space_name: str = ""  # Links form to trial space for solver auto-config
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -167,6 +168,7 @@ class FormInfo:
         return {
             "name": self.name,
             "description": self.description,
+            "trial_space_name": self.trial_space_name,
         }
 
 
@@ -179,6 +181,7 @@ class SolutionInfo:
     iterations: int
     residual_norm: float
     wall_time: float
+    l2_norm: float = 0.0  # Cached at solve time to avoid recomputation
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -191,6 +194,8 @@ class SolutionInfo:
             raise InvariantError(f"residual_norm must be >= 0, got {self.residual_norm}")
         if self.wall_time < 0.0:
             raise InvariantError(f"wall_time must be >= 0, got {self.wall_time}")
+        if self.l2_norm < 0.0:
+            raise InvariantError(f"l2_norm must be >= 0, got {self.l2_norm}")
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -200,6 +205,7 @@ class SolutionInfo:
             "iterations": self.iterations,
             "residual_norm": self.residual_norm,
             "wall_time": self.wall_time,
+            "l2_norm": self.l2_norm,
         }
 
 
@@ -279,11 +285,18 @@ class SessionState:
         self.ufl_symbols: dict[str, Any] = {}
         self.solver_diagnostics: dict[str, Any] = {}
         self.log_buffer: list[str] = []
+        # Performance caches
+        self._space_id_to_name: dict[int, str] = {}  # id(space) -> name
+        self._boundary_tag_cache: dict[str, str] = {}  # mesh_name -> tag_name
+        self._interior_tag_cache: dict[str, str] = {}  # mesh_name -> tag_name
 
     # --- Invariant verification ---
 
     def check_invariants(self) -> None:
-        """Verify all 8 session referential integrity invariants (INV-1 through INV-8).
+        """Verify all 9 session referential integrity invariants (INV-1 through INV-9).
+
+        Single-pass collection + set-operation validation for O(n) total
+        instead of O(k*n) per-invariant scans.
 
         Raises InvariantError if any cross-reference is dangling or
         structural constraint is violated.
@@ -296,51 +309,42 @@ class SessionState:
                 f"active_mesh '{self.active_mesh}' not in meshes {list(self.meshes.keys())}"
             )
 
-        # INV-2: all function_spaces reference valid meshes
-        for name, fs in self.function_spaces.items():
-            if fs.mesh_name not in self.meshes:
-                raise InvariantError(
-                    f"Function space '{name}' references non-existent mesh '{fs.mesh_name}'"
-                )
+        # Single pass: collect all referenced mesh and space names
+        mesh_names = set(self.meshes.keys())
+        space_names = set(self.function_spaces.keys())
 
-        # INV-3: all functions reference valid function_spaces
-        for name, fn in self.functions.items():
-            if fn.space_name not in self.function_spaces:
-                raise InvariantError(
-                    f"Function '{name}' references non-existent space '{fn.space_name}'"
-                )
+        ref_meshes: set[str] = set()
+        ref_spaces: set[str] = set()
 
-        # INV-4: all BCs reference valid function_spaces
-        for name, bc in self.bcs.items():
-            if bc.space_name not in self.function_spaces:
-                raise InvariantError(
-                    f"BC '{name}' references non-existent space '{bc.space_name}'"
-                )
+        for fs in self.function_spaces.values():
+            ref_meshes.add(fs.mesh_name)
+        for f in self.functions.values():
+            ref_spaces.add(f.space_name)
+        for bc in self.bcs.values():
+            ref_spaces.add(bc.space_name)
+        for sol in self.solutions.values():
+            ref_spaces.add(sol.space_name)
+        for mt in self.mesh_tags.values():
+            ref_meshes.add(mt.mesh_name)
+        for em in self.entity_maps.values():
+            ref_meshes.add(em.parent_mesh)
+            ref_meshes.add(em.child_mesh)
+        for finfo in self.forms.values():
+            if finfo.trial_space_name:
+                ref_spaces.add(finfo.trial_space_name)
 
-        # INV-5: all solutions reference valid function_spaces
-        for name, sol in self.solutions.items():
-            if sol.space_name not in self.function_spaces:
-                raise InvariantError(
-                    f"Solution '{name}' references non-existent space '{sol.space_name}'"
-                )
+        # Bulk validate with set operations
+        invalid_meshes = ref_meshes - mesh_names
+        if invalid_meshes:
+            raise InvariantError(
+                f"INV-2/6/7: Dangling mesh references: {invalid_meshes}"
+            )
 
-        # INV-6: all mesh_tags reference valid meshes
-        for name, mt in self.mesh_tags.items():
-            if mt.mesh_name not in self.meshes:
-                raise InvariantError(
-                    f"MeshTags '{name}' references non-existent mesh '{mt.mesh_name}'"
-                )
-
-        # INV-7: all entity_maps reference valid meshes
-        for name, em in self.entity_maps.items():
-            if em.parent_mesh not in self.meshes:
-                raise InvariantError(
-                    f"EntityMap '{name}' parent_mesh '{em.parent_mesh}' not found"
-                )
-            if em.child_mesh not in self.meshes:
-                raise InvariantError(
-                    f"EntityMap '{name}' child_mesh '{em.child_mesh}' not found"
-                )
+        invalid_spaces = ref_spaces - space_names
+        if invalid_spaces:
+            raise InvariantError(
+                f"INV-3/4/5/9: Dangling space references: {invalid_spaces}"
+            )
 
         # INV-8: forms non-empty implies at least one function_space exists
         if self.forms and not self.function_spaces:
@@ -350,37 +354,37 @@ class SessionState:
 
     # --- Typed accessors ---
 
+    def _get_or_raise(
+        self, registry: dict, name: str, error_cls: type, label: str, suggestion: str = "",
+    ) -> Any:
+        """Lookup a named object in a registry or raise with available keys."""
+        if name not in registry:
+            available = list(registry.keys())
+            raise error_cls(
+                f"{label} '{name}' not found. Available: {available}",
+                suggestion=suggestion,
+            )
+        result = registry[name]
+        if __debug__:
+            if result.name != name:
+                raise PostconditionError(
+                    f"_get_or_raise({label}): name '{result.name}' != key '{name}'"
+                )
+        return result
+
     def get_mesh(self, name: str | None = None) -> MeshInfo:
         """Return named mesh, or active mesh if name is None."""
         if name is None:
             if self.active_mesh is None:
                 raise NoActiveMeshError("No active mesh. Create one first.")
             name = self.active_mesh
-        if name not in self.meshes:
-            available = list(self.meshes.keys())
-            raise MeshNotFoundError(
-                f"Mesh '{name}' not found. Available: {available}"
-            )
-        result = self.meshes[name]
-        if __debug__:
-            if result.name != name:
-                raise PostconditionError(
-                    f"get_mesh(): MeshInfo.name '{result.name}' != registry key '{name}'"
-                )
-        return result
+        return self._get_or_raise(self.meshes, name, MeshNotFoundError, "Mesh")
 
     def get_space(self, name: str) -> FunctionSpaceInfo:
-        if name not in self.function_spaces:
-            available = list(self.function_spaces.keys())
-            raise FunctionSpaceNotFoundError(
-                f"Function space '{name}' not found. Available: {available}"
-            )
-        result = self.function_spaces[name]
+        result = self._get_or_raise(
+            self.function_spaces, name, FunctionSpaceNotFoundError, "Function space",
+        )
         if __debug__:
-            if result.name != name:
-                raise PostconditionError(
-                    f"get_space(): FunctionSpaceInfo.name '{result.name}' != registry key '{name}'"
-                )
             if result.mesh_name not in self.meshes:
                 raise PostconditionError(
                     f"get_space(): mesh '{result.mesh_name}' not in meshes registry"
@@ -388,17 +392,8 @@ class SessionState:
         return result
 
     def get_function(self, name: str) -> FunctionInfo:
-        if name not in self.functions:
-            available = list(self.functions.keys())
-            raise FunctionNotFoundError(
-                f"Function '{name}' not found. Available: {available}"
-            )
-        result = self.functions[name]
+        result = self._get_or_raise(self.functions, name, FunctionNotFoundError, "Function")
         if __debug__:
-            if result.name != name:
-                raise PostconditionError(
-                    f"get_function(): FunctionInfo.name '{result.name}' != registry key '{name}'"
-                )
             if result.space_name not in self.function_spaces:
                 raise PostconditionError(
                     f"get_function(): space '{result.space_name}' not in function_spaces registry"
@@ -424,16 +419,8 @@ class SessionState:
 
     def get_solution(self, name: str) -> SolutionInfo:
         """Return named solution, or raise if not found."""
-        if name not in self.solutions:
-            raise FunctionNotFoundError(
-                f"Solution '{name}' not found. Available: {list(self.solutions.keys())}"
-            )
-        result = self.solutions[name]
+        result = self._get_or_raise(self.solutions, name, FunctionNotFoundError, "Solution")
         if __debug__:
-            if result.name != name:
-                raise PostconditionError(
-                    f"get_solution(): SolutionInfo.name '{result.name}' != registry key '{name}'"
-                )
             if result.space_name not in self.function_spaces:
                 raise PostconditionError(
                     f"get_solution(): space '{result.space_name}' not in function_spaces registry"
@@ -442,33 +429,18 @@ class SessionState:
 
     def get_form(self, name: str, suggestion: str = "") -> FormInfo:
         """Return named form, or raise if not found."""
-        if name not in self.forms:
-            raise DOLFINxAPIError(
-                f"No {name} form defined. Available: {list(self.forms.keys())}",
-                suggestion=suggestion or "Use define_variational_form first.",
-            )
-        result = self.forms[name]
-        if __debug__:
-            if result.name != name:
-                raise PostconditionError(
-                    f"get_form(): FormInfo.name '{result.name}' != registry key '{name}'"
-                )
-        return result
+        return self._get_or_raise(
+            self.forms, name, DOLFINxAPIError, "Form",
+            suggestion=suggestion or "Use define_variational_form first.",
+        )
 
     def get_mesh_tags(self, name: str) -> MeshTagsInfo:
         """Return named mesh tags, or raise if not found."""
-        if name not in self.mesh_tags:
-            available = list(self.mesh_tags.keys())
-            raise DOLFINxAPIError(
-                f"MeshTags '{name}' not found. Available: {available}",
-                suggestion="Check available tags with get_session_state.",
-            )
-        result = self.mesh_tags[name]
+        result = self._get_or_raise(
+            self.mesh_tags, name, DOLFINxAPIError, "MeshTags",
+            suggestion="Check available tags with get_session_state.",
+        )
         if __debug__:
-            if result.name != name:
-                raise PostconditionError(
-                    f"get_mesh_tags(): MeshTagsInfo.name '{result.name}' != registry key '{name}'"
-                )
             if result.mesh_name not in self.meshes:
                 raise PostconditionError(
                     f"get_mesh_tags(): mesh '{result.mesh_name}' not in meshes registry"
@@ -477,18 +449,11 @@ class SessionState:
 
     def get_entity_map(self, name: str) -> EntityMapInfo:
         """Return named entity map, or raise if not found."""
-        if name not in self.entity_maps:
-            available = list(self.entity_maps.keys())
-            raise DOLFINxAPIError(
-                f"EntityMap '{name}' not found. Available: {available}",
-                suggestion="Check available entity maps with get_session_state.",
-            )
-        result = self.entity_maps[name]
+        result = self._get_or_raise(
+            self.entity_maps, name, DOLFINxAPIError, "EntityMap",
+            suggestion="Check available entity maps with get_session_state.",
+        )
         if __debug__:
-            if result.name != name:
-                raise PostconditionError(
-                    f"get_entity_map(): EntityMapInfo.name '{result.name}' != registry key '{name}'"
-                )
             if result.parent_mesh not in self.meshes:
                 raise PostconditionError(
                     f"get_entity_map(): parent_mesh '{result.parent_mesh}' not in meshes registry"
@@ -529,12 +494,17 @@ class SessionState:
         ]
         for sname in dep_spaces:
             self._remove_space_dependents(sname)
+            self._space_id_to_name.pop(id(self.function_spaces[sname].space), None)
             del self.function_spaces[sname]
 
         # Remove dependent mesh tags
         dep_tags = [k for k, v in self.mesh_tags.items() if v.mesh_name == name]
         for tname in dep_tags:
             del self.mesh_tags[tname]
+
+        # Clear tag caches for removed mesh
+        self._boundary_tag_cache.pop(name, None)
+        self._interior_tag_cache.pop(name, None)
 
         # Remove dependent entity maps
         dep_maps = [
@@ -580,7 +550,14 @@ class SessionState:
         logger.info("Removed mesh '%s' and %d dependent spaces", name, len(dep_spaces))
 
     def _remove_space_dependents(self, space_name: str) -> None:
-        """Remove functions, BCs, and solutions that depend on a space."""
+        """Remove functions, BCs, solutions, and auto-created scalar spaces that depend on a space."""
+        # Cascade auto-created scalar spaces (from set_material_properties F3 fix)
+        scalar_child = f"_scalar_{space_name}"
+        if scalar_child in self.function_spaces:
+            self._space_id_to_name.pop(id(self.function_spaces[scalar_child].space), None)
+            self._remove_space_dependents(scalar_child)
+            del self.function_spaces[scalar_child]
+
         for registry in (self.functions, self.bcs, self.solutions):
             to_remove = [
                 k for k, v in registry.items() if getattr(v, "space_name", None) == space_name
@@ -602,24 +579,36 @@ class SessionState:
 
     def find_space_name(self, space_object: Any) -> str:
         """Find the registry name for a function space object, or 'unknown'."""
-        for sname, sinfo in self.function_spaces.items():
-            if sinfo.space is space_object:
-                return sname
-        return "unknown"
+        name = self._space_id_to_name.get(id(space_object))
+        if name is not None and name in self.function_spaces:
+            return name
+        # Rebuild index for untracked mutations (e.g. from tools/problem.py)
+        self._space_id_to_name = {
+            id(info.space): sname for sname, info in self.function_spaces.items()
+        }
+        return self._space_id_to_name.get(id(space_object), "unknown")
 
     # --- Overview ---
+
+    @staticmethod
+    def _safe_summary(key: str, obj: Any) -> dict[str, Any]:
+        """Call obj.summary() if available, else return fallback dict."""
+        try:
+            return obj.summary()
+        except (AttributeError, TypeError):
+            return {"name": key, "type": "custom"}
 
     def overview(self) -> dict[str, Any]:
         return {
             "active_mesh": self.active_mesh,
-            "meshes": {k: v.summary() for k, v in self.meshes.items()},
-            "function_spaces": {k: v.summary() for k, v in self.function_spaces.items()},
-            "functions": {k: v.summary() for k, v in self.functions.items()},
-            "boundary_conditions": {k: v.summary() for k, v in self.bcs.items()},
-            "forms": {k: v.summary() for k, v in self.forms.items()},
-            "solutions": {k: v.summary() for k, v in self.solutions.items()},
-            "mesh_tags": {k: v.summary() for k, v in self.mesh_tags.items()},
-            "entity_maps": {k: v.summary() for k, v in self.entity_maps.items()},
+            "meshes": {k: self._safe_summary(k, v) for k, v in self.meshes.items()},
+            "function_spaces": {k: self._safe_summary(k, v) for k, v in self.function_spaces.items()},
+            "functions": {k: self._safe_summary(k, v) for k, v in self.functions.items()},
+            "boundary_conditions": {k: self._safe_summary(k, v) for k, v in self.bcs.items()},
+            "forms": {k: self._safe_summary(k, v) for k, v in self.forms.items()},
+            "solutions": {k: self._safe_summary(k, v) for k, v in self.solutions.items()},
+            "mesh_tags": {k: self._safe_summary(k, v) for k, v in self.mesh_tags.items()},
+            "entity_maps": {k: self._safe_summary(k, v) for k, v in self.entity_maps.items()},
             "ufl_symbols": list(self.ufl_symbols.keys()),
         }
 
@@ -639,6 +628,9 @@ class SessionState:
         self.solver_diagnostics.clear()
         self.log_buffer.clear()
         self.active_mesh = None
+        self._space_id_to_name.clear()
+        self._boundary_tag_cache.clear()
+        self._interior_tag_cache.clear()
 
         # Postcondition: all registries empty
         for _name, _reg in [

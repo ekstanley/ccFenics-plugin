@@ -8,7 +8,7 @@ from typing import Any
 
 from mcp.server.fastmcp import Context
 
-from .._app import mcp
+from .._app import get_session, mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
@@ -18,16 +18,20 @@ from ..errors import (
     SolverError,
     handle_tool_errors,
 )
-from ..session import SessionState, SolutionInfo
+from ..session import SolutionInfo
+from ._validators import require_nonempty, require_positive
 
 logger = logging.getLogger(__name__)
 
 
-def _get_session(ctx: Context) -> SessionState:
-    return ctx.request_context.lifespan_context
-
-
 _VALID_NULLSPACE_MODES = frozenset({"constant", "rigid_body"})
+
+
+def _validate_solver_tolerances(rtol: float, atol: float, max_iter: int) -> None:
+    """Validate iterative solver tolerance parameters."""
+    require_positive(rtol, "rtol")
+    require_positive(atol, "atol")
+    require_positive(max_iter, "max_iter")
 
 
 @mcp.tool()
@@ -82,21 +86,15 @@ async def solve(
             f"got '{nullspace_mode}'."
         )
     # S1: solution_name must be non-empty
-    if not solution_name or not solution_name.strip():
-        raise PreconditionError("solution_name must be non-empty.")
+    require_nonempty(solution_name, "solution_name")
     # S2: validate iterative solver parameters
     if solver_type == "iterative":
-        if rtol <= 0:
-            raise PreconditionError(f"rtol must be > 0, got {rtol}.")
-        if atol <= 0:
-            raise PreconditionError(f"atol must be > 0, got {atol}.")
-        if max_iter <= 0:
-            raise PreconditionError(f"max_iter must be > 0, got {max_iter}.")
+        _validate_solver_tolerances(rtol, atol, max_iter)
 
     import dolfinx.fem.petsc
     import numpy as np
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Retrieve forms via accessor (postcondition-checked)
     a_form = session.get_form("bilinear", suggestion="Use define_variational_form first.").ufl_form
@@ -107,6 +105,16 @@ async def solve(
 
     # Build PETSc options
     opts = _build_petsc_opts(solver_type, ksp_type, pc_type, petsc_options, rtol, atol, max_iter)
+
+    # Auto-MUMPS for mixed-space direct solves (saddle-point systems need it)
+    if solver_type == "direct" and "pc_factor_mat_solver_type" not in opts:
+        a_info = session.forms.get("bilinear")
+        if (a_info is not None
+                and a_info.trial_space_name
+                and a_info.trial_space_name in session.function_spaces
+                and session.function_spaces[a_info.trial_space_name].element_family == "Mixed"):
+            opts["pc_factor_mat_solver_type"] = "mumps"
+            logger.info("Auto-selected MUMPS for mixed-space direct solve")
 
     # Solve
     t0 = time.perf_counter()
@@ -164,14 +172,15 @@ async def solve(
     from ..utils import compute_l2_norm
     l2_norm = compute_l2_norm(uh)
 
-    # Postcondition: L2 norm must be non-negative
-    if l2_norm < 0:
-        raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
+    # Postcondition: L2 norm must be non-negative (mathematically guaranteed)
+    if __debug__:
+        if l2_norm < 0:
+            raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
 
     # Identify space name
     space_name = session.find_space_name(uh.function_space)
 
-    # Store solution
+    # Store solution (cache l2_norm to avoid recomputation in diagnostics)
     sol_info = SolutionInfo(
         name=solution_name,
         function=uh,
@@ -180,6 +189,7 @@ async def solve(
         iterations=iterations,
         residual_norm=float(residual_norm),
         wall_time=wall_time,
+        l2_norm=l2_norm,
     )
     session.solutions[solution_name] = sol_info
 
@@ -378,8 +388,7 @@ async def solve_time_dependent(
             f"time_scheme must be 'backward_euler', got '{time_scheme}'."
         )
     # S1: solution_name must be non-empty
-    if not solution_name or not solution_name.strip():
-        raise PreconditionError("solution_name must be non-empty.")
+    require_nonempty(solution_name, "solution_name")
     if output_times is not None:
         for i, t in enumerate(output_times):
             if not isinstance(t, (int, float)) or not math.isfinite(t):
@@ -401,7 +410,7 @@ async def solve_time_dependent(
     import dolfinx.fem.petsc
     import numpy as np
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Retrieve forms via accessor (postcondition-checked)
     a_form = session.get_form("bilinear", suggestion="Use define_variational_form first.").ufl_form
@@ -479,6 +488,7 @@ async def solve_time_dependent(
         iterations=step,
         residual_norm=0.0,
         wall_time=wall_time_total,
+        l2_norm=l2_norm,
     )
     session.solutions[solution_name] = sol_info
 
@@ -522,9 +532,7 @@ async def get_solver_diagnostics(
     Returns:
         Dictionary with solver diagnostics and solution information
     """
-    from ..utils import compute_l2_norm
-
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Get the last solution
     sol_info = session.get_last_solution()
@@ -533,12 +541,8 @@ async def get_solver_diagnostics(
     V = sol_info.function.function_space
     num_dofs = V.dofmap.index_map.size_global * V.dofmap.index_map_bs
 
-    # Compute L2 norm
-    l2_norm = compute_l2_norm(sol_info.function)
-
-    # Postcondition: L2 norm must be non-negative
-    if l2_norm < 0:
-        raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
+    # Use cached L2 norm (computed at solve time, avoids form recompilation)
+    l2_norm = sol_info.l2_norm
 
     if __debug__:
         session.check_invariants()
@@ -601,8 +605,7 @@ async def solve_nonlinear(
     from ..ufl_context import _check_forbidden
 
     # PRE-1: residual non-empty
-    if not residual or not residual.strip():
-        raise PreconditionError("residual must be a non-empty string.")
+    require_nonempty(residual, "residual")
 
     # PRE-2: residual passes token blocklist
     _check_forbidden(residual)
@@ -620,14 +623,9 @@ async def solve_nonlinear(
         )
 
     # PRE-6: numeric parameters are positive
-    if max_iter <= 0:
-        raise PreconditionError(f"max_iter must be > 0, got {max_iter}.")
-    if rtol <= 0:
-        raise PreconditionError(f"rtol must be > 0, got {rtol}.")
-    if atol <= 0:
-        raise PreconditionError(f"atol must be > 0, got {atol}.")
+    _validate_solver_tolerances(rtol, atol, max_iter)
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # PRE-4: unknown exists in session.functions
     if unknown not in session.functions:
@@ -716,9 +714,10 @@ async def solve_nonlinear(
     from ..utils import compute_l2_norm
     l2_norm = compute_l2_norm(u_func)
 
-    # POST-2: L2 norm must be non-negative
-    if l2_norm < 0:
-        raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
+    # POST-2: L2 norm must be non-negative (mathematically guaranteed)
+    if __debug__:
+        if l2_norm < 0:
+            raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
 
     # Get residual norm from SNES if available
     residual_norm = 0.0
@@ -726,7 +725,7 @@ async def solve_nonlinear(
     with contextlib.suppress(Exception):
         residual_norm = float(snes.getFunctionNorm())
 
-    # Register solution
+    # Register solution (cache l2_norm to avoid recomputation)
     sol_name = solution_name or unknown
     sol_info = SolutionInfo(
         name=sol_name,
@@ -736,6 +735,7 @@ async def solve_nonlinear(
         iterations=int(n_iters),
         residual_norm=residual_norm,
         wall_time=wall_time,
+        l2_norm=l2_norm,
     )
     session.solutions[sol_name] = sol_info
 
@@ -815,11 +815,9 @@ async def solve_eigenvalue(
         eigenvectors (list of names), wall_time, and solver_type.
     """
     # PRE-1: stiffness_form non-empty
-    if not stiffness_form or not stiffness_form.strip():
-        raise PreconditionError("stiffness_form must be a non-empty UFL expression.")
+    require_nonempty(stiffness_form, "stiffness_form")
     # PRE-2: mass_form non-empty
-    if not mass_form or not mass_form.strip():
-        raise PreconditionError("mass_form must be a non-empty UFL expression.")
+    require_nonempty(mass_form, "mass_form")
     # PRE-3: num_eigenvalues in [1, 1000]
     if not 1 <= num_eigenvalues <= 1000:
         raise PreconditionError(
@@ -852,10 +850,10 @@ async def solve_eigenvalue(
     import numpy as np
     import ufl
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Resolve function space
-    space_name = function_space or session.active_space
+    space_name = function_space
     if space_name is None:
         # Use first available function space
         if not session.function_spaces:

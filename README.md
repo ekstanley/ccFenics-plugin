@@ -6,7 +6,7 @@ MCP server for FEniCSx/DOLFINx finite element computing.
 
 **Version**: 0.9.0 | **License**: MIT | **Python**: >= 3.10 | **DOLFINx**: 0.10.0
 
-Exposes 34 tools, 6 prompt templates, and 6 resources for mesh generation,
+Exposes 35 tools, 6 prompt templates, and 6 resources for mesh generation,
 function space creation, PDE solving, and post-processing through the
 [Model Context Protocol](https://modelcontextprotocol.io/). Runs inside a
 Docker container with the full DOLFINx/PETSc stack.
@@ -16,7 +16,7 @@ Docker container with the full DOLFINx/PETSc stack.
                (Claude, Cursor, ...)                      (dolfinx/dolfinx:stable)
               +---------------------+                    +-----------------------+
               |                     |    JSON-RPC         |  FastMCP Server       |
-              |  "Solve the 3D     | ---- stdio -------> |    33 Tool Handlers   |
+              |  "Solve the 3D     | ---- stdio -------> |    35 Tool Handlers   |
               |   Poisson equation" |    or HTTP          |    SessionState       |
               |                     | <------------------ |    /workspace output  |
               +---------------------+                    +-----------------------+
@@ -87,7 +87,7 @@ installing in the Cowork UI:
 2. In Cowork, go to **Extensions** and select **Install from folder**
 3. Point it to the `ccfenics/` directory in this repo
 4. When prompted, choose a **Workspace Directory** for simulation output
-5. The 33 MCP tools become available in your Cowork session
+5. The 35 MCP tools become available in your Cowork session
 
 The workspace directory is where exported files (VTK, XDMF) are written.
 It defaults to `~/dolfinx-workspace` and can be changed in the extension
@@ -132,7 +132,7 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 
 ---
 
-## Tools (34)
+## Tools (35)
 
 ### Mesh Operations (9)
 
@@ -184,10 +184,11 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 | `export_solution` | Export to XDMF or VTK format |
 | `plot_solution` | Contour or warp plots (PNG via PyVista) |
 
-### Interpolation (3)
+### Interpolation (4)
 
 | Tool | Description |
 |------|-------------|
+| `create_function` | Create a function in a space, optionally initialized with an expression |
 | `interpolate` | Interpolate UFL expression into a function space |
 | `project` | L2-project an expression onto a function space |
 | `create_discrete_operator` | Build a discrete operator matrix |
@@ -277,7 +278,7 @@ Use IPython magics inside JupyterLab:
 
 ## Design-by-Contract
 
-All 34 tools enforce runtime contracts:
+All 35 tools enforce runtime contracts:
 
 - **Preconditions**: Input validation (parameter types, ranges, existence checks)
 - **Postconditions**: Output validation (return structure, value constraints)
@@ -347,7 +348,7 @@ pytest tests/ --ignore=tests/test_runtime_contracts.py -v
 docker build -t dolfinx-mcp .
 pytest tests/test_runtime_contracts.py -v
 
-# Production readiness suite (all 34 tools via MCP protocol)
+# Production readiness suite (all 35 tools via MCP protocol)
 python examples/production_readiness.py --verbose
 
 # Lint
@@ -369,7 +370,7 @@ src/dolfinx_mcp/
         problem.py         3 problem definition tools
         solver.py          5 solver tools
         postprocess.py     6 post-processing tools
-        interpolation.py   3 interpolation tools
+        interpolation.py   4 interpolation tools
         session_mgmt.py    5 session management tools
     prompts/templates.py   6 workflow prompts
     resources/providers.py 6 URI resources

@@ -6,7 +6,7 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": {},
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -17,7 +17,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": {},
+        "matcher": "",
         "hooks": [
           {
             "type": "prompt",

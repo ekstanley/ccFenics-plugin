@@ -13,6 +13,24 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+import numpy as np
+
+# Module-level constant namespace for numpy expression evaluation.
+# Built once at import time to avoid rebuilding per call (P1 optimization).
+# Only the coordinate array "x" needs to be injected per invocation.
+_NUMPY_NS: dict[str, Any] = {
+    "np": np,
+    "pi": np.pi,
+    "e": np.e,
+    "sin": np.sin,
+    "cos": np.cos,
+    "exp": np.exp,
+    "sqrt": np.sqrt,
+    "abs": np.abs,
+    "log": np.log,
+    "__builtins__": {},
+}
+
 
 def eval_numpy_expression(expr: str, x: Any) -> Any:
     """Evaluate a numpy expression at coordinate arrays.
@@ -28,26 +46,15 @@ def eval_numpy_expression(expr: str, x: Any) -> Any:
     Returns:
         Array of shape (N,) or scalar broadcast to that shape.
     """
-    import numpy as np
-
     from .ufl_context import _check_forbidden
 
     _check_forbidden(expr)
 
-    ns: dict[str, Any] = {
-        "x": x,
-        "np": np,
-        "pi": np.pi,
-        "e": np.e,
-        "sin": np.sin,
-        "cos": np.cos,
-        "exp": np.exp,
-        "sqrt": np.sqrt,
-        "abs": np.abs,
-        "log": np.log,
-        "__builtins__": {},
-    }
-    result = eval(expr, ns)  # noqa: S307 -- restricted namespace, Docker-sandboxed
+    ns = {**_NUMPY_NS, "x": x}
+    # SECURITY: eval() is required -- UFL/numpy expressions are Python syntax.
+    # Namespace is restricted (no builtins) and forbidden tokens are pre-filtered.
+    # Docker container provides the security boundary (--network none, non-root).
+    result = eval(expr, ns)  # noqa: S307
     if isinstance(result, (int, float)):
         return np.full(x.shape[1], float(result))
     result = np.asarray(result)
@@ -78,8 +85,6 @@ def make_boundary_marker(condition: str) -> Callable[[Any], Any]:
     Returns:
         Callable[[ndarray], ndarray] suitable for DOLFINx boundary location.
     """
-    import numpy as np
-
     from .ufl_context import _check_forbidden
 
     _check_forbidden(condition)
@@ -90,8 +95,10 @@ def make_boundary_marker(condition: str) -> Callable[[Any], Any]:
         return marker
 
     def marker(x: Any) -> Any:
-        ns: dict[str, Any] = {"x": x, "np": np, "pi": np.pi, "__builtins__": {}}
-        result = eval(condition, ns)  # noqa: S307 -- restricted namespace, Docker-sandboxed
+        ns = {**_NUMPY_NS, "x": x}
+        # SECURITY: eval() is required -- boundary conditions are Python syntax.
+        # Namespace is restricted and _check_forbidden was called eagerly above.
+        result = eval(condition, ns)  # noqa: S307
         result = np.asarray(result)
         if result.dtype.kind != 'b':
             result = result.astype(bool)

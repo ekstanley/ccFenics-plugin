@@ -21,10 +21,14 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 from mcp.server.fastmcp import FastMCP
 
 from .session import SessionState
+
+if TYPE_CHECKING:
+    from mcp.server.fastmcp import Context
 
 logger = logging.getLogger(__name__)
 
@@ -47,3 +51,8 @@ mcp = FastMCP(
     host=os.environ.get("DOLFINX_MCP_HOST", "127.0.0.1"),
     port=int(os.environ.get("DOLFINX_MCP_PORT", "8000")),
 )
+
+
+def get_session(ctx: Context) -> SessionState:
+    """Extract SessionState from MCP context."""
+    return ctx.request_context.lifespan_context

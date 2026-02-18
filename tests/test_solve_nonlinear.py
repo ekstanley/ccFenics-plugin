@@ -7,39 +7,25 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dolfinx_mcp.session import (
-    FunctionInfo,
-    FunctionSpaceInfo,
-    MeshInfo,
-    SessionState,
+from conftest import (
+    assert_error_type,
+    assert_no_error,
+    make_mesh_info,
+    make_mock_ctx,
+    make_space_info,
 )
 
-
-def _mock_ctx(session: SessionState):
-    ctx = MagicMock()
-    ctx.request_context.lifespan_context = session
-    return ctx
-
-
-def _make_mesh_info(name: str = "m1") -> MeshInfo:
-    return MeshInfo(
-        name=name, mesh=MagicMock(), cell_type="triangle",
-        num_cells=100, num_vertices=64, gdim=2, tdim=2,
-    )
-
-
-def _make_space_info(name: str = "V", mesh_name: str = "m1") -> FunctionSpaceInfo:
-    return FunctionSpaceInfo(
-        name=name, space=MagicMock(), mesh_name=mesh_name,
-        element_family="Lagrange", element_degree=1, num_dofs=64,
-    )
+from dolfinx_mcp.session import (
+    FunctionInfo,
+    SessionState,
+)
 
 
 def _populated_session() -> SessionState:
     """Session with mesh, space, and a mutable unknown function."""
     s = SessionState()
-    s.meshes["m1"] = _make_mesh_info("m1")
-    s.function_spaces["V"] = _make_space_info("V")
+    s.meshes["m1"] = make_mesh_info("m1")
+    s.function_spaces["V"] = make_space_info("V")
     mock_func = MagicMock()
     mock_func.function_space = s.function_spaces["V"].space
     s.functions["u"] = FunctionInfo(
@@ -98,143 +84,143 @@ class TestSolveNonlinearPreconditions:
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(residual="", unknown="u", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_rejects_whitespace_residual(self):
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(
             residual="   ", unknown="u", ctx=ctx,
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_rejects_forbidden_token_in_residual(self):
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(
             residual="import os; inner(grad(u),grad(v))*dx",
             unknown="u", ctx=ctx,
         )
-        assert result["error"] == "INVALID_UFL_EXPRESSION"
+        assert_error_type(result, "INVALID_UFL_EXPRESSION")
 
     @pytest.mark.asyncio
     async def test_rejects_forbidden_token_in_jacobian(self):
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(
             residual="inner(grad(u),grad(v))*dx",
             unknown="u",
             jacobian="__import__('os').system('rm -rf /')",
             ctx=ctx,
         )
-        assert result["error"] == "INVALID_UFL_EXPRESSION"
+        assert_error_type(result, "INVALID_UFL_EXPRESSION")
 
     @pytest.mark.asyncio
     async def test_rejects_empty_jacobian(self):
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(
             residual="inner(grad(u),grad(v))*dx",
             unknown="u",
             jacobian="  ",
             ctx=ctx,
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_rejects_unknown_function_not_found(self):
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(
             residual="inner(grad(u),grad(v))*dx",
             unknown="nonexistent",
             ctx=ctx,
         )
-        assert result["error"] == "FUNCTION_NOT_FOUND"
+        assert_error_type(result, "FUNCTION_NOT_FOUND")
 
     @pytest.mark.asyncio
     async def test_rejects_invalid_snes_type(self):
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(
             residual="inner(grad(u),grad(v))*dx",
             unknown="u",
             snes_type="invalid_solver",
             ctx=ctx,
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_rejects_negative_max_iter(self):
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(
             residual="inner(grad(u),grad(v))*dx",
             unknown="u",
             max_iter=-1,
             ctx=ctx,
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_rejects_zero_max_iter(self):
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(
             residual="inner(grad(u),grad(v))*dx",
             unknown="u",
             max_iter=0,
             ctx=ctx,
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_rejects_negative_rtol(self):
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(
             residual="inner(grad(u),grad(v))*dx",
             unknown="u",
             rtol=-1e-10,
             ctx=ctx,
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_rejects_negative_atol(self):
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_nonlinear(
             residual="inner(grad(u),grad(v))*dx",
             unknown="u",
             atol=-1e-12,
             ctx=ctx,
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
 
 # ─── Postcondition tests ──────────────────────────────────────────────
@@ -247,7 +233,7 @@ class TestSolveNonlinearPostconditions:
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         modules, _ = _setup_solver_mocks(finite=False)
 
@@ -268,7 +254,7 @@ class TestSolveNonlinearPostconditions:
                 ctx=ctx,
             )
 
-        assert result["error"] == "SOLVER_ERROR"
+        assert_error_type(result, "SOLVER_ERROR")
         assert "NaN" in result["message"] or "Inf" in result["message"]
 
     @pytest.mark.asyncio
@@ -276,7 +262,7 @@ class TestSolveNonlinearPostconditions:
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         modules, _ = _setup_solver_mocks()
 
@@ -301,7 +287,7 @@ class TestSolveNonlinearPostconditions:
                 ctx=ctx,
             )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
 
 
 # ─── Error path tests ─────────────────────────────────────────────────
@@ -315,7 +301,7 @@ class TestSolveNonlinearErrorPaths:
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         modules, _ = _setup_solver_mocks()
         # Make NonlinearProblem raise
@@ -342,7 +328,7 @@ class TestSolveNonlinearErrorPaths:
                 ctx=ctx,
             )
 
-        assert result["error"] == "SOLVER_ERROR"
+        assert_error_type(result, "SOLVER_ERROR")
         assert "DIVERGED" in result["message"]
 
 
@@ -356,7 +342,7 @@ class TestSolveNonlinearHappyPath:
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         modules, l2 = _setup_solver_mocks(n_iters=3, converged=True)
 
@@ -381,7 +367,7 @@ class TestSolveNonlinearHappyPath:
                 ctx=ctx,
             )
 
-        assert "error" not in result
+        assert_no_error(result)
         assert result["converged"] is True
         assert result["iterations"] == 3
         assert result["solution_name"] == "u"
@@ -394,7 +380,7 @@ class TestSolveNonlinearHappyPath:
         from dolfinx_mcp.tools.solver import solve_nonlinear
 
         session = _populated_session()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         modules, _ = _setup_solver_mocks(n_iters=2)
 
@@ -431,7 +417,7 @@ class TestSolveNonlinearHappyPath:
 
         for snes in ("newtonls", "newtontr", "nrichardson"):
             session = _populated_session()
-            ctx = _mock_ctx(session)
+            ctx = make_mock_ctx(session)
 
             modules, _ = _setup_solver_mocks(n_iters=1)
 

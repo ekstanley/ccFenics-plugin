@@ -1,4 +1,4 @@
-"""Interpolation and discrete operator tools."""
+"""Interpolation, function creation, and discrete operator tools."""
 
 from __future__ import annotations
 
@@ -7,23 +7,37 @@ from typing import Any
 
 from mcp.server.fastmcp import Context
 
-from .._app import mcp
+from .._app import get_session, mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
+    DuplicateNameError,
     PostconditionError,
     PreconditionError,
     SolverError,
     handle_tool_errors,
 )
 from ..eval_helpers import eval_numpy_expression
-from ..session import SessionState
+from ..session import FunctionInfo
+from ._validators import require_nonempty
 
 logger = logging.getLogger(__name__)
 
 
-def _get_session(ctx: Context) -> SessionState:
-    return ctx.request_context.lifespan_context
+def _compute_function_stats(
+    func: Any, error_msg: str, suggestion: str,
+) -> dict[str, float]:
+    """Compute DOF norm/min/max with finiteness postcondition."""
+    import numpy as np
+
+    if not np.isfinite(func.x.array).all():
+        raise PostconditionError(error_msg, suggestion=suggestion)
+    arr = func.x.array
+    return {
+        "l2_norm": float(np.linalg.norm(arr)),
+        "min_value": float(np.min(arr)) if arr.size > 0 else 0.0,
+        "max_value": float(np.max(arr)) if arr.size > 0 else 0.0,
+    }
 
 
 @mcp.tool()
@@ -62,13 +76,15 @@ async def interpolate(
         )
 
     import dolfinx.fem
-    import numpy as np
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Get target function
     target_info = session.get_function(target)
     target_func = target_info.function
+
+    _INTERP_ERR = "Interpolation produced NaN/Inf values."
+    _INTERP_HINT = "Check source expression or function for validity."
 
     # Expression-based interpolation
     if expression is not None:
@@ -84,17 +100,7 @@ async def interpolate(
                 suggestion="Check expression syntax. Use x[0], x[1], x[2] for coordinates.",
             ) from exc
 
-        # Postcondition: interpolation result must be finite
-        if not np.isfinite(target_func.x.array).all():
-            raise PostconditionError(
-                "Interpolation produced NaN/Inf values.",
-                suggestion="Check source expression or function for validity.",
-            )
-
-        # Compute statistics
-        l2_norm = float(np.linalg.norm(target_func.x.array))
-        min_val = float(np.min(target_func.x.array))
-        max_val = float(np.max(target_func.x.array))
+        stats = _compute_function_stats(target_func, _INTERP_ERR, _INTERP_HINT)
 
         if __debug__:
             session.check_invariants()
@@ -104,9 +110,7 @@ async def interpolate(
             "target": target,
             "source": "expression",
             "expression": expression,
-            "l2_norm": l2_norm,
-            "min_value": min_val,
-            "max_value": max_val,
+            **stats,
         }
 
     # Function-based interpolation
@@ -125,17 +129,7 @@ async def interpolate(
                 suggestion="Ensure source and target spaces are compatible.",
             ) from exc
 
-        # Postcondition: interpolation result must be finite
-        if not np.isfinite(target_func.x.array).all():
-            raise PostconditionError(
-                "Interpolation produced NaN/Inf values.",
-                suggestion="Check source expression or function for validity.",
-            )
-
-        # Compute statistics
-        l2_norm = float(np.linalg.norm(target_func.x.array))
-        min_val = float(np.min(target_func.x.array))
-        max_val = float(np.max(target_func.x.array))
+        stats = _compute_function_stats(target_func, _INTERP_ERR, _INTERP_HINT)
 
         if __debug__:
             session.check_invariants()
@@ -145,9 +139,7 @@ async def interpolate(
             "target": target,
             "source": source_function,
             "interpolation_type": "same_mesh",
-            "l2_norm": l2_norm,
-            "min_value": min_val,
-            "max_value": max_val,
+            **stats,
         }
 
     # Cross-mesh interpolation
@@ -174,17 +166,7 @@ async def interpolate(
             suggestion="Ensure meshes are compatible and source function is defined appropriately.",
         ) from exc
 
-    # Postcondition: interpolation result must be finite
-    if not np.isfinite(target_func.x.array).all():
-        raise PostconditionError(
-            "Interpolation produced NaN/Inf values.",
-            suggestion="Check source expression or function for validity.",
-        )
-
-    # Compute statistics
-    l2_norm = float(np.linalg.norm(target_func.x.array))
-    min_val = float(np.min(target_func.x.array))
-    max_val = float(np.max(target_func.x.array))
+    stats = _compute_function_stats(target_func, _INTERP_ERR, _INTERP_HINT)
 
     if __debug__:
         session.check_invariants()
@@ -198,9 +180,89 @@ async def interpolate(
         "source": source_function,
         "source_mesh": source_mesh,
         "interpolation_type": "cross_mesh",
-        "l2_norm": l2_norm,
-        "min_value": min_val,
-        "max_value": max_val,
+        **stats,
+    }
+
+
+@mcp.tool()
+@handle_tool_errors
+async def create_function(
+    name: str,
+    function_space: str,
+    expression: str | None = None,
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """Create a new function in a function space, optionally initialized.
+
+    Use this to create functions for Newton initial guesses, custom workflows,
+    or as targets for the ``interpolate`` tool.
+
+    Args:
+        name: Name for the function. Must not already exist in session.
+        function_space: Name of the function space.
+        expression: Optional numpy expression to initialize (e.g., "sin(pi*x[0])").
+            Use x[0], x[1], x[2] for coordinates. If omitted, function is
+            zero-initialized.
+
+    Returns:
+        dict with name, space_name, l2_norm, min_value, max_value.
+    """
+    # Preconditions: validate before imports
+    require_nonempty(name, "name")
+    if name in get_session(ctx).functions:
+        raise DuplicateNameError(
+            f"Function '{name}' already exists.",
+            suggestion="Choose a different name or remove the existing function first.",
+        )
+
+    import dolfinx.fem
+
+    session = get_session(ctx)
+
+    # Resolve function space
+    space_info = session.get_space(function_space)
+    V = space_info.space
+
+    # Create function
+    func = dolfinx.fem.Function(V, name=name)
+
+    # Initialize
+    if expression is not None:
+        try:
+            func.interpolate(
+                lambda x: eval_numpy_expression(expression, x)
+            )
+        except DOLFINxMCPError:
+            raise
+        except Exception as exc:
+            raise DOLFINxAPIError(
+                f"Failed to interpolate expression '{expression}': {exc}",
+                suggestion="Check expression syntax. Use x[0], x[1], x[2] for coordinates.",
+            ) from exc
+
+    stats = _compute_function_stats(
+        func, "Function contains NaN/Inf values after initialization.",
+        "Check expression produces finite values over the domain.",
+    )
+
+    # Register in session
+    session.functions[name] = FunctionInfo(
+        name=name,
+        function=func,
+        space_name=function_space,
+        description=f"Created: {expression or 'zero-initialized'}",
+    )
+
+    if __debug__:
+        session.check_invariants()
+
+    logger.info("Created function '%s' in space '%s'", name, function_space)
+    return {
+        "name": name,
+        "space_name": function_space,
+        "l2_norm": round(stats["l2_norm"], 8),
+        "min_value": round(stats["min_value"], 8),
+        "max_value": round(stats["max_value"], 8),
     }
 
 
@@ -233,7 +295,7 @@ async def create_discrete_operator(
 
     import dolfinx.fem
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Resolve function spaces
     source_info = session.get_space(source_space)
@@ -325,8 +387,7 @@ async def project(
         expression = str(expression)
 
     # Preconditions: validate before lazy imports
-    if not name or not name.strip():
-        raise PreconditionError("name must be non-empty.")
+    require_nonempty(name, "name")
     if expression is not None and source_function is not None:
         raise PreconditionError(
             "Exactly one of 'expression' or 'source_function' must be provided, not both."
@@ -338,10 +399,9 @@ async def project(
 
     import dolfinx.fem
     import dolfinx.fem.petsc
-    import numpy as np
     import ufl
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Resolve target space via accessor
     space_info = session.get_space(target_space)
@@ -389,21 +449,14 @@ async def project(
             suggestion="Check expression/function compatibility with target space.",
         ) from exc
 
-    # Postcondition: result must be finite
-    if not np.isfinite(uh.x.array).all():
-        raise PostconditionError(
-            "Projection produced NaN/Inf values.",
-            suggestion="Check source expression/function and target space compatibility.",
-        )
-
-    # Compute statistics
-    l2_norm = float(np.linalg.norm(uh.x.array))
-    min_val = float(np.min(uh.x.array))
-    max_val = float(np.max(uh.x.array))
+    stats = _compute_function_stats(
+        uh, "Projection produced NaN/Inf values.",
+        "Check source expression/function and target space compatibility.",
+    )
 
     # Postcondition: L2 norm must be non-negative
-    if l2_norm < 0:
-        raise PostconditionError(f"L2 norm must be non-negative, got {l2_norm}.")
+    if stats["l2_norm"] < 0:
+        raise PostconditionError(f"L2 norm must be non-negative, got {stats['l2_norm']}.")
 
     # Store result as function in session
     from ..session import FunctionInfo
@@ -419,11 +472,11 @@ async def project(
 
     logger.info(
         "Projected %s into '%s' (space: %s), L2 norm=%.6e",
-        expression or source_function, name, target_space, l2_norm,
+        expression or source_function, name, target_space, stats["l2_norm"],
     )
     return {
         "name": name,
-        "l2_norm": round(l2_norm, 8),
-        "min_value": round(min_val, 8),
-        "max_value": round(max_val, 8),
+        "l2_norm": round(stats["l2_norm"], 8),
+        "min_value": round(stats["min_value"], 8),
+        "max_value": round(stats["max_value"], 8),
     }

@@ -6,6 +6,17 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from conftest import (
+    make_bc_info,
+    make_entity_map_info,
+    make_form_info,
+    make_function_info,
+    make_mesh_info,
+    make_mesh_tags_info,
+    make_solution_info,
+    make_space_info,
+)
+
 from dolfinx_mcp.errors import (
     DOLFINxAPIError,
     FunctionSpaceNotFoundError,
@@ -24,50 +35,6 @@ from dolfinx_mcp.session import (
     SessionState,
     SolutionInfo,
 )
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_mesh_info(name: str) -> MeshInfo:
-    return MeshInfo(
-        name=name,
-        mesh=MagicMock(),
-        cell_type="triangle",
-        num_cells=100,
-        num_vertices=64,
-        gdim=2,
-        tdim=2,
-    )
-
-
-def _make_space_info(name: str, mesh_name: str) -> FunctionSpaceInfo:
-    return FunctionSpaceInfo(
-        name=name,
-        space=MagicMock(),
-        mesh_name=mesh_name,
-        element_family="Lagrange",
-        element_degree=1,
-        num_dofs=64,
-    )
-
-
-def _make_function_info(name: str, space_name: str) -> FunctionInfo:
-    return FunctionInfo(
-        name=name,
-        function=MagicMock(),
-        space_name=space_name,
-    )
-
-
-def _make_bc_info(name: str, space_name: str) -> BCInfo:
-    return BCInfo(
-        name=name,
-        bc=MagicMock(),
-        space_name=space_name,
-        num_dofs=10,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -102,12 +69,12 @@ class TestMeshAccessors:
             session.get_mesh("nonexistent")
 
     def test_get_mesh_by_name(self, session: SessionState):
-        info = _make_mesh_info("m1")
+        info = make_mesh_info("m1")
         session.meshes["m1"] = info
         assert session.get_mesh("m1") is info
 
     def test_get_mesh_default_active(self, session: SessionState):
-        info = _make_mesh_info("m1")
+        info = make_mesh_info("m1")
         session.meshes["m1"] = info
         session.active_mesh = "m1"
         assert session.get_mesh() is info
@@ -128,14 +95,14 @@ class TestSpaceAccessors:
             session.get_only_space()
 
     def test_get_only_space_one(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        s = _make_space_info("V", "m1")
+        session.meshes["m1"] = make_mesh_info("m1")
+        s = make_space_info("V", "m1")
         session.function_spaces["V"] = s
         assert session.get_only_space() is s
 
     def test_get_only_space_multiple(self, session: SessionState):
-        session.function_spaces["V1"] = _make_space_info("V1", "m1")
-        session.function_spaces["V2"] = _make_space_info("V2", "m1")
+        session.function_spaces["V1"] = make_space_info("V1", "m1")
+        session.function_spaces["V2"] = make_space_info("V2", "m1")
         with pytest.raises(FunctionSpaceNotFoundError, match="Multiple"):
             session.get_only_space()
 
@@ -147,10 +114,10 @@ class TestSpaceAccessors:
 
 class TestCascadeDeletion:
     def test_remove_mesh_cascades(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.functions["f"] = _make_function_info("f", "V")
-        session.bcs["bc0"] = _make_bc_info("bc0", "V")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.functions["f"] = make_function_info("f", "V")
+        session.bcs["bc0"] = make_bc_info("bc0", "V")
         session.active_mesh = "m1"
 
         session.remove_mesh("m1")
@@ -166,10 +133,10 @@ class TestCascadeDeletion:
             session.remove_mesh("missing")
 
     def test_remove_mesh_preserves_other(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.meshes["m2"] = _make_mesh_info("m2")
-        session.function_spaces["V1"] = _make_space_info("V1", "m1")
-        session.function_spaces["V2"] = _make_space_info("V2", "m2")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.meshes["m2"] = make_mesh_info("m2")
+        session.function_spaces["V1"] = make_space_info("V1", "m1")
+        session.function_spaces["V2"] = make_space_info("V2", "m2")
         session.active_mesh = "m2"
 
         session.remove_mesh("m1")
@@ -186,8 +153,8 @@ class TestCascadeDeletion:
 
 class TestOverview:
     def test_overview_populated(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
         session.active_mesh = "m1"
 
         ov = session.overview()
@@ -204,8 +171,8 @@ class TestOverview:
 
 class TestCleanup:
     def test_cleanup_clears_all(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
         session.active_mesh = "m1"
         session.ufl_symbols["f"] = MagicMock()
 
@@ -217,11 +184,9 @@ class TestCleanup:
         assert session.active_mesh is None
 
     def test_cleanup_clears_forms(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.forms["F1"] = FormInfo(
-            name="F1", form=MagicMock(), ufl_form=MagicMock()
-        )
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.forms["F1"] = make_form_info("F1")
         session.cleanup()
         assert len(session.forms) == 0
 
@@ -243,9 +208,9 @@ class TestCleanup:
 
 class TestFormAccessors:
     def test_get_form_success(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        form_info = FormInfo(name="F1", form=MagicMock(), ufl_form=MagicMock())
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        form_info = make_form_info("F1")
         session.forms["F1"] = form_info
         assert session.get_form("F1") is form_info
 
@@ -254,16 +219,14 @@ class TestFormAccessors:
             session.get_form("missing_form")
 
     def test_register_form(self, session: SessionState):
-        form_info = FormInfo(
-            name="F1", form=MagicMock(), ufl_form=MagicMock(), description="test"
-        )
+        form_info = make_form_info("F1", description="test")
         session.forms["F1"] = form_info
         assert "F1" in session.forms
         assert session.forms["F1"].description == "test"
 
     def test_register_form_duplicate_overwrites(self, session: SessionState):
-        f1 = FormInfo(name="F1", form=MagicMock(), ufl_form=MagicMock())
-        f2 = FormInfo(name="F1", form=MagicMock(), ufl_form=MagicMock())
+        f1 = make_form_info("F1")
+        f2 = make_form_info("F1")
         session.forms["F1"] = f1
         session.forms["F1"] = f2
         assert session.forms["F1"] is f2
@@ -276,10 +239,8 @@ class TestFormAccessors:
 
 class TestMeshTagsAccessors:
     def test_get_mesh_tags_success(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        tags_info = MeshTagsInfo(
-            name="t1", tags=MagicMock(), mesh_name="m1", dimension=1
-        )
+        session.meshes["m1"] = make_mesh_info("m1")
+        tags_info = make_mesh_tags_info("t1")
         session.mesh_tags["t1"] = tags_info
         assert session.get_mesh_tags("t1") is tags_info
 
@@ -295,15 +256,9 @@ class TestMeshTagsAccessors:
 
 class TestEntityMapAccessors:
     def test_get_entity_map_success(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.meshes["m2"] = _make_mesh_info("m2")
-        em_info = EntityMapInfo(
-            name="em1",
-            entity_map=MagicMock(),
-            parent_mesh="m1",
-            child_mesh="m2",
-            dimension=1,
-        )
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.meshes["m2"] = make_mesh_info("m2")
+        em_info = make_entity_map_info("em1", parent_mesh="m1", child_mesh="m2", dimension=1)
         session.entity_maps["em1"] = em_info
         assert session.get_entity_map("em1") is em_info
 
@@ -319,17 +274,9 @@ class TestEntityMapAccessors:
 
 class TestSolutionAccessors:
     def test_get_last_solution_success(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        sol_info = SolutionInfo(
-            name="u1",
-            function=MagicMock(),
-            space_name="V",
-            converged=True,
-            iterations=5,
-            residual_norm=1e-10,
-            wall_time=0.5,
-        )
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        sol_info = make_solution_info("u1")
         session.solutions["u1"] = sol_info
         assert session.get_last_solution() is sol_info
 
@@ -338,16 +285,10 @@ class TestSolutionAccessors:
             session.get_last_solution()
 
     def test_get_last_solution_returns_last(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        sol1 = SolutionInfo(
-            name="u1", function=MagicMock(), space_name="V",
-            converged=True, iterations=5, residual_norm=1e-10, wall_time=0.5,
-        )
-        sol2 = SolutionInfo(
-            name="u2", function=MagicMock(), space_name="V",
-            converged=True, iterations=3, residual_norm=1e-12, wall_time=0.3,
-        )
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        sol1 = make_solution_info("u1")
+        sol2 = make_solution_info("u2")
         session.solutions["u1"] = sol1
         session.solutions["u2"] = sol2
         assert session.get_last_solution() is sol2
@@ -360,12 +301,9 @@ class TestSolutionAccessors:
 
 class TestFindSpaceName:
     def test_find_space_name_found(self, session: SessionState):
-        space = MagicMock()
-        session.function_spaces["V"] = FunctionSpaceInfo(
-            name="V", space=space, mesh_name="m1",
-            element_family="Lagrange", element_degree=1, num_dofs=64,
-        )
-        assert session.find_space_name(space) == "V"
+        space_info = make_space_info("V", "m1")
+        session.function_spaces["V"] = space_info
+        assert session.find_space_name(space_info.space) == "V"
 
     def test_find_space_name_not_found(self, session: SessionState):
         assert session.find_space_name(MagicMock()) == "unknown"
@@ -378,29 +316,25 @@ class TestFindSpaceName:
 
 class TestFormsCascade:
     def test_forms_cleared_on_remove_mesh(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.forms["F1"] = FormInfo(
-            name="F1", form=MagicMock(), ufl_form=MagicMock()
-        )
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.forms["F1"] = make_form_info("F1")
         session.remove_mesh("m1")
         assert len(session.forms) == 0
 
     def test_ufl_symbols_cleared_on_remove_mesh(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
         session.ufl_symbols["x"] = MagicMock()
         session.remove_mesh("m1")
         assert len(session.ufl_symbols) == 0
 
     def test_forms_preserved_when_no_spaces_deleted(self, session: SessionState):
         """When remove_mesh deletes a mesh with no spaces, forms survive."""
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.meshes["m2"] = _make_mesh_info("m2")
-        session.function_spaces["V"] = _make_space_info("V", "m2")
-        session.forms["F1"] = FormInfo(
-            name="F1", form=MagicMock(), ufl_form=MagicMock()
-        )
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.meshes["m2"] = make_mesh_info("m2")
+        session.function_spaces["V"] = make_space_info("V", "m2")
+        session.forms["F1"] = make_form_info("F1")
         # m1 has no spaces, so removing it should NOT clear forms
         session.remove_mesh("m1")
         assert "F1" in session.forms
@@ -450,9 +384,7 @@ class TestDataclassValidation:
                               num_dofs=64, shape=(0, 3))
 
     def test_space_info_shape_in_summary(self):
-        si = FunctionSpaceInfo(name="V", space=MagicMock(), mesh_name="m1",
-                               element_family="Lagrange", element_degree=1,
-                               num_dofs=64, shape=(3,))
+        si = make_space_info("V", shape=(3,))
         s = si.summary()
         assert "shape" in s
         assert s["shape"] == [3]
@@ -466,8 +398,7 @@ class TestDataclassValidation:
             FunctionInfo(name="f", function=MagicMock(), space_name="")
 
     def test_function_info_summary(self):
-        fi = FunctionInfo(name="f", function=MagicMock(), space_name="V",
-                          description="test func")
+        fi = make_function_info("f", description="test func")
         s = fi.summary()
         assert s["description"] == "test func"
 
@@ -558,11 +489,9 @@ class TestDataclassValidation:
 
 class TestOverviewCompleteness:
     def test_summary_includes_forms(self, session: SessionState):
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.forms["F1"] = FormInfo(
-            name="F1", form=MagicMock(), ufl_form=MagicMock()
-        )
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.forms["F1"] = make_form_info("F1")
         ov = session.overview()
         assert "forms" in ov
         assert "F1" in ov["forms"]
@@ -583,18 +512,13 @@ class TestGoldenScenarios:
     def test_full_workflow_create_and_destroy(self, session: SessionState):
         """Full workflow: mesh -> space -> func -> BC -> form -> sol -> remove."""
         # Build up
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.functions["f"] = _make_function_info("f", "V")
-        session.bcs["bc0"] = _make_bc_info("bc0", "V")
-        session.forms["F1"] = FormInfo(
-            name="F1", form=MagicMock(), ufl_form=MagicMock()
-        )
-        session.solutions["u1"] = SolutionInfo(
-            name="u1", function=MagicMock(), space_name="V",
-            converged=True, iterations=5, residual_norm=1e-10, wall_time=0.5,
-        )
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.functions["f"] = make_function_info("f", "V")
+        session.bcs["bc0"] = make_bc_info("bc0", "V")
+        session.forms["F1"] = make_form_info("F1")
+        session.solutions["u1"] = make_solution_info("u1")
         session.ufl_symbols["x"] = MagicMock()
         session.check_invariants()
 
@@ -613,15 +537,13 @@ class TestGoldenScenarios:
 
     def test_multi_mesh_partial_removal(self, session: SessionState):
         """Two meshes: remove one, forms survive if other mesh has spaces."""
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.meshes["m2"] = _make_mesh_info("m2")
-        session.function_spaces["V1"] = _make_space_info("V1", "m1")
-        session.function_spaces["V2"] = _make_space_info("V2", "m2")
-        session.functions["f1"] = _make_function_info("f1", "V1")
-        session.functions["f2"] = _make_function_info("f2", "V2")
-        session.forms["F1"] = FormInfo(
-            name="F1", form=MagicMock(), ufl_form=MagicMock()
-        )
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.meshes["m2"] = make_mesh_info("m2")
+        session.function_spaces["V1"] = make_space_info("V1", "m1")
+        session.function_spaces["V2"] = make_space_info("V2", "m2")
+        session.functions["f1"] = make_function_info("f1", "V1")
+        session.functions["f2"] = make_function_info("f2", "V2")
+        session.forms["F1"] = make_form_info("F1")
         session.active_mesh = "m2"
         session.check_invariants()
 

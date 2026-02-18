@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .. import __version__
 from .._app import mcp
 
 
@@ -46,7 +47,7 @@ def get_capabilities() -> dict[str, Any]:
         "export_formats": ["xdmf", "vtk", "vtkhdf"],
         "norm_types": ["L2", "H1"],
         "version": {
-            "dolfinx_mcp": "0.6.2",
+            "dolfinx_mcp": __version__,
             "dolfinx_target": "0.10.0",
         },
     }

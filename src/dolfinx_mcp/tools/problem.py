@@ -13,7 +13,7 @@ from typing import Any
 
 from mcp.server.fastmcp import Context
 
-from .._app import mcp
+from .._app import get_session, mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
@@ -23,20 +23,35 @@ from ..errors import (
     handle_tool_errors,
 )
 from ..eval_helpers import eval_numpy_expression, make_boundary_marker
-from ..session import BCInfo, FormInfo, FunctionInfo, SessionState
+from ..session import BCInfo, FormInfo, FunctionInfo, FunctionSpaceInfo
 from ..ufl_context import build_namespace, safe_evaluate
+from ._validators import require_finite, require_nonempty
 
 logger = logging.getLogger(__name__)
-
-
-def _get_session(ctx: Context) -> SessionState:
-    return ctx.request_context.lifespan_context
 
 
 # ---------------------------------------------------------------------------
 # BC expression helper (kept local -- distinct from eval_helpers.py because
 # it merges an external UFL namespace with numpy overrides)
 # ---------------------------------------------------------------------------
+
+
+_BC_EXPR_NS: dict | None = None
+
+
+def _get_bc_expr_ns() -> dict:
+    """Return cached numpy-override namespace for BC expressions."""
+    global _BC_EXPR_NS
+    if _BC_EXPR_NS is None:
+        import numpy as np
+
+        _BC_EXPR_NS = {
+            "np": np, "pi": np.pi, "e": np.e,
+            "sin": np.sin, "cos": np.cos, "exp": np.exp,
+            "sqrt": np.sqrt, "abs": np.abs, "log": np.log,
+            "tan": np.tan, "__builtins__": {},
+        }
+    return _BC_EXPR_NS
 
 
 def _eval_bc_expression(expr: str, x: Any, ns: dict[str, Any]) -> Any:
@@ -54,23 +69,30 @@ def _eval_bc_expression(expr: str, x: Any, ns: dict[str, Any]) -> Any:
 
     _check_forbidden(expr)
 
-    local_ns = dict(ns)
-    local_ns["x"] = x
-    local_ns["np"] = np
-    local_ns["sin"] = np.sin
-    local_ns["cos"] = np.cos
-    local_ns["exp"] = np.exp
-    local_ns["sqrt"] = np.sqrt
-    local_ns["abs"] = np.abs
-    local_ns["log"] = np.log
-    local_ns["tan"] = np.tan
-    local_ns["pi"] = np.pi
-    local_ns["e"] = np.e
-    local_ns["__builtins__"] = {}
+    local_ns = {**ns, **_get_bc_expr_ns(), "x": x}
     result = eval(expr, local_ns)  # noqa: S307 -- restricted namespace, Docker-sandboxed
     if isinstance(result, (int, float)):
         return np.full(x.shape[1], float(result))
     return result
+
+
+def _validate_bc_value(value: str | float | list[float]) -> None:
+    """Validate boundary condition value (scalar, vector, or expression)."""
+    if isinstance(value, (int, float)):
+        require_finite(value, "BC value")
+    elif isinstance(value, list):
+        if len(value) == 0:
+            raise PreconditionError(
+                "BC list value must be non-empty.",
+                suggestion="Provide at least one component value, e.g. [1.0, 0.0].",
+            )
+        if not all(isinstance(v, (int, float)) for v in value):
+            raise PreconditionError(
+                "All elements in BC list value must be numeric.",
+                suggestion="Provide a list of floats, e.g. [1.0, 0.0].",
+            )
+        for i, v in enumerate(value):
+            require_finite(v, f"BC element [{i}]")
 
 
 # ---------------------------------------------------------------------------
@@ -104,12 +126,10 @@ async def define_variational_form(
         trial_space (str), and test_space (str).
     """
     # Preconditions
-    if not bilinear or not bilinear.strip():
-        raise PreconditionError("bilinear form expression must be non-empty.")
-    if not linear or not linear.strip():
-        raise PreconditionError("linear form expression must be non-empty.")
+    require_nonempty(bilinear, "bilinear form expression")
+    require_nonempty(linear, "linear form expression")
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Resolve function spaces (before lazy imports for host-side preconditions)
     if trial_space is not None:
@@ -210,18 +230,20 @@ async def define_variational_form(
             suggestion="Check UFL expressions produce valid forms.",
         )
 
-    # Store forms
+    # Store forms (trial_space_name enables solver auto-config for mixed spaces)
     session.forms["bilinear"] = FormInfo(
         name="bilinear",
         form=a_compiled,
         ufl_form=a_ufl,
         description=bilinear,
+        trial_space_name=V_trial_info.name,
     )
     session.forms["linear"] = FormInfo(
         name="linear",
         form=L_compiled,
         ufl_form=L_ufl,
         description=linear,
+        trial_space_name=V_trial_info.name,
     )
 
     if __debug__:
@@ -241,7 +263,7 @@ async def define_variational_form(
 @mcp.tool()
 @handle_tool_errors
 async def apply_boundary_condition(
-    value: str | float,
+    value: str | float | list[float],
     boundary: str | None = None,
     boundary_tag: int | None = None,
     function_space: str | None = None,
@@ -252,7 +274,9 @@ async def apply_boundary_condition(
     """Apply a Dirichlet boundary condition.
 
     Args:
-        value: BC value -- a float for constant, or a UFL expression string.
+        value: BC value -- a float for constant, a list of floats for
+            vector-valued BCs (e.g., [1.0, 0.0] for 2D), or a UFL
+            expression string.
         boundary: Geometric boundary condition as a Python expression of x.
             Example: "np.isclose(x[0], 0.0)" for left boundary.
             Use "True" for all boundary DOFs.
@@ -268,14 +292,7 @@ async def apply_boundary_condition(
     if sub_space is not None and sub_space < 0:
         raise PreconditionError(f"sub_space must be >= 0, got {sub_space}.")
 
-    # PS-1: BC float value must be finite
-    if isinstance(value, (int, float)):
-        import math
-        if not math.isfinite(value):
-            raise PreconditionError(
-                f"BC value must be finite, got {value}.",
-                suggestion="Provide a finite numeric value.",
-            )
+    _validate_bc_value(value)
 
     # PS-3: boundary and boundary_tag are mutually exclusive
     if boundary is not None and boundary_tag is not None:
@@ -284,7 +301,7 @@ async def apply_boundary_condition(
             suggestion="Use 'boundary' for geometric or 'boundary_tag' for tagged boundaries.",
         )
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Resolve function space (no dolfinx import needed)
     if function_space is not None:
@@ -326,7 +343,32 @@ async def apply_boundary_condition(
     # When sub_space is set, DOF location returns a pair (parent, collapsed);
     # the Constant overload of dirichletbc expects a plain ndarray.
     # So for sub_space + scalar, we interpolate into a Function instead.
-    if isinstance(value, (int, float)) and sub_space is None:
+    if isinstance(value, list):
+        # Vector-valued BC: validate dimension and interpolate constant vector
+        value_shape = V_collapse.ufl_element().reference_value_shape
+        if not value_shape:
+            raise PreconditionError(
+                f"List value provided but space '{fs_info.name}' is scalar (no vector components).",
+                suggestion="Use a float for scalar spaces, or use a vector function space.",
+            )
+        expected_dim = value_shape[0]
+        if len(value) != expected_dim:
+            raise PreconditionError(
+                f"List has {len(value)} components but space expects {expected_dim}.",
+                suggestion=f"Provide a list with exactly {expected_dim} values.",
+            )
+        bc_func = dolfinx.fem.Function(V_collapse)
+        vec_values = np.array(value, dtype=np.float64)
+        bc_func.interpolate(
+            lambda x, _v=vec_values: np.tile(_v.reshape(-1, 1), (1, x.shape[1]))
+        )
+        if not np.isfinite(bc_func.x.array).all():
+            raise PostconditionError(
+                "Vector BC produced non-finite values after interpolation.",
+                suggestion="Check that all list components are finite.",
+            )
+        bc_value = bc_func
+    elif isinstance(value, (int, float)) and sub_space is None:
         bc_value = dolfinx.fem.Constant(mesh, float(value))
     elif isinstance(value, (int, float)):
         # sub_space is set -- use Function for compatibility with dofs pair
@@ -473,17 +515,12 @@ async def set_material_properties(
         )
 
     if isinstance(value, (int, float)):
-        import math
-        if not math.isfinite(value):
-            raise PreconditionError(
-                f"Material property value must be finite, got {value}.",
-                suggestion="Provide a finite numeric value.",
-            )
+        require_finite(value, "Material property value")
 
     import dolfinx.fem
     import numpy as np
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if isinstance(value, (int, float)):
         # Scalar constant
@@ -502,7 +539,49 @@ async def set_material_properties(
     V = fs_info.space
     mesh_info = session.get_mesh(fs_info.mesh_name)
 
-    func = dolfinx.fem.Function(V)
+    # Auto-coerce numeric strings to Constants (avoids shape mismatch on vector spaces)
+    import math
+    try:
+        numeric_val = float(value)
+        if math.isfinite(numeric_val):
+            constant = dolfinx.fem.Constant(mesh_info.mesh, numeric_val)
+            session.ufl_symbols[name] = constant
+            logger.info("Set constant material property '%s' = %s (coerced from string)", name, value)
+            return {"name": name, "type": "constant", "value": numeric_val}
+    except (ValueError, TypeError):
+        pass  # Not numeric, proceed with interpolation
+
+    # Detect vector space: scalar expressions need a scalar space
+    value_shape = V.ufl_element().reference_value_shape
+    is_vector_space = len(value_shape) > 0
+    actual_space_name = fs_info.name
+
+    if is_vector_space:
+        # Auto-create scalar CG space for scalar material expression
+        scalar_space_name = f"_scalar_{fs_info.name}"
+        if scalar_space_name in session.function_spaces:
+            V_scalar = session.function_spaces[scalar_space_name].space
+        else:
+            mesh = mesh_info.mesh
+            degree = fs_info.element_degree
+            V_scalar = dolfinx.fem.functionspace(mesh, ("Lagrange", degree))
+            session.function_spaces[scalar_space_name] = FunctionSpaceInfo(
+                name=scalar_space_name,
+                space=V_scalar,
+                mesh_name=fs_info.mesh_name,
+                element_family="Lagrange",
+                element_degree=degree,
+                num_dofs=V_scalar.dofmap.index_map.size_global,
+            )
+        func = dolfinx.fem.Function(V_scalar)
+        actual_space_name = scalar_space_name
+        logger.info(
+            "Auto-created scalar space for material '%s' on vector space '%s'",
+            name, fs_info.name,
+        )
+    else:
+        func = dolfinx.fem.Function(V)
+
     try:
         func.interpolate(
             lambda x: eval_numpy_expression(value, x)
@@ -526,7 +605,7 @@ async def set_material_properties(
     session.functions[name] = FunctionInfo(
         name=name,
         function=func,
-        space_name=fs_info.name,
+        space_name=actual_space_name,
         description=f"Material property: {value}",
     )
 

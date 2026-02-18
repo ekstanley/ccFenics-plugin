@@ -20,6 +20,9 @@ Groups:
     G (3): Nonlinear solver -- solve_nonlinear postconditions and session state
     H (2): Eval helpers -- shape postcondition and boolean coercion
     I (1): Pipeline integration -- plot_solution → read_workspace_file round-trip
+    J (3): Cowork issue fixes -- create_function, vector BC, numeric material
+    K (3): Performance optimization correctness -- namespace cache, boundary markers, L2 norm
+    L (3): Test Report v2 fixes -- auto-MUMPS, mixed-space plot, scalar material on vector space
 """
 
 from __future__ import annotations
@@ -906,4 +909,319 @@ class TestPipelineIntegration:
         assert plot_bytes == read_bytes, (
             f"Round-trip mismatch: plot gave {len(plot_bytes)} bytes, "
             f"read gave {len(read_bytes)} bytes"
+        )
+
+
+# ===========================================================================
+# Group J: Cowork Issue Fixes (F1 vector BCs, F2 create_function)
+# ===========================================================================
+
+
+class TestCoworkIssueFixes:
+    """Integration tests for fixes identified during Cowork validation."""
+
+    @pytest.mark.asyncio
+    async def test_create_function_then_interpolate(self, session, ctx) -> None:
+        """F2: create_function → interpolate round-trip."""
+        from dolfinx_mcp.tools.interpolation import create_function, interpolate
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="m_cf", nx=8, ny=8, ctx=ctx)
+        await create_function_space(
+            name="V_cf", family="Lagrange", degree=1, ctx=ctx,
+        )
+
+        # Create zero-initialized function
+        result = await create_function(
+            name="u_cf", function_space="V_cf", ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["l2_norm"] == 0.0
+        assert "u_cf" in session.functions
+
+        # Interpolate an expression into it
+        interp_result = await interpolate(
+            target="u_cf", expression="sin(pi*x[0])*sin(pi*x[1])", ctx=ctx,
+        )
+        assert "error" not in interp_result
+        assert interp_result["l2_norm"] > 0.0
+
+    @pytest.mark.asyncio
+    async def test_vector_bc_elasticity_pipeline(self, session, ctx) -> None:
+        """F1: Vector BC [1.0, 0.0] on a 2D vector space."""
+        import numpy as np
+
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import apply_boundary_condition
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="m_vbc", nx=8, ny=8, ctx=ctx)
+        await create_function_space(
+            name="V_elast", family="Lagrange", degree=1,
+            shape=[2], ctx=ctx,
+        )
+
+        result = await apply_boundary_condition(
+            value=[1.0, 0.0],
+            boundary="np.isclose(x[0], 0.0)",
+            function_space="V_elast",
+            ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["num_dofs"] > 0
+
+    @pytest.mark.asyncio
+    async def test_numeric_string_material_on_vector_space(self, session, ctx) -> None:
+        """F3: Numeric string '1.0' auto-coerces to Constant on vector space."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import set_material_properties
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="m_nm", nx=4, ny=4, ctx=ctx)
+        await create_function_space(
+            name="V_vec", family="Lagrange", degree=1,
+            shape=[2], ctx=ctx,
+        )
+
+        result = await set_material_properties(
+            name="mu", value="1.0", function_space="V_vec", ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["type"] == "constant"
+        assert result["value"] == 1.0
+
+
+# ---------------------------------------------------------------------------
+# Group K: Performance Optimization Correctness
+# ---------------------------------------------------------------------------
+
+
+class TestPerformanceOptCorrectness:
+    """Verify performance optimizations don't change numerical results."""
+
+    @pytest.mark.asyncio
+    async def test_interpolation_correct_after_ns_cache(self, session, ctx):
+        """P1: eval_numpy_expression with cached namespace produces correct values."""
+        from dolfinx_mcp.tools.interpolation import create_function
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="m_ns", nx=8, ny=8, ctx=ctx)
+        await create_function_space(name="V_ns", family="Lagrange", degree=2, ctx=ctx)
+
+        result = await create_function(
+            name="f_ns", function_space="V_ns",
+            expression="sin(pi * x[0]) * sin(pi * x[1])", ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["max_value"] > 0.9  # peak of sin(pi*x)*sin(pi*y) ≈ 1.0
+        assert result["min_value"] >= -0.01  # should be non-negative
+
+    @pytest.mark.asyncio
+    async def test_boundary_marker_correct_after_cache(self, session, ctx):
+        """P2: make_boundary_marker with cached namespace locates correct facets."""
+        from dolfinx_mcp.tools.mesh import create_unit_square, mark_boundaries
+
+        await create_unit_square(name="m_bm", nx=8, ny=8, ctx=ctx)
+        result = await mark_boundaries(
+            markers=[
+                {"tag": 1, "condition": "np.isclose(x[0], 0.0)"},
+                {"tag": 2, "condition": "np.isclose(x[0], 1.0)"},
+            ],
+            name="bm_tags",
+            ctx=ctx,
+        )
+        assert "error" not in result
+        assert result["tag_counts"][1] > 0
+        assert result["tag_counts"][2] > 0
+
+    @pytest.mark.asyncio
+    async def test_solver_diagnostics_uses_cached_l2_norm(self, session, ctx):
+        """P6: get_solver_diagnostics returns cached L2 norm from solve()."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.postprocess import compute_error
+        from dolfinx_mcp.tools.problem import (
+            apply_boundary_condition,
+            define_variational_form,
+            set_material_properties,
+        )
+        from dolfinx_mcp.tools.solver import get_solver_diagnostics, solve
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="m_diag", nx=8, ny=8, ctx=ctx)
+        await create_function_space(name="V_diag", family="Lagrange", degree=1, ctx=ctx)
+        await set_material_properties(name="f", value="1.0", ctx=ctx)
+        await define_variational_form(
+            bilinear="inner(grad(u), grad(v)) * dx",
+            linear="f * v * dx",
+            ctx=ctx,
+        )
+        await apply_boundary_condition(value=0.0, boundary="True", ctx=ctx)
+
+        solve_result = await solve(ctx=ctx)
+        assert "error" not in solve_result
+
+        diag_result = await get_solver_diagnostics(ctx=ctx)
+        assert "error" not in diag_result
+        assert diag_result["solution_norm_L2"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Group L: Test Report v2 fixes (F1-F3)
+# ---------------------------------------------------------------------------
+
+class TestReportV2Fixes:
+    """Tests for fixes from Comprehensive Test Report v2."""
+
+    @pytest.mark.asyncio
+    async def test_mixed_space_auto_mumps(self, ctx: MagicMock) -> None:
+        """F1: Mixed-space direct solve auto-selects MUMPS without explicit petsc_options."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import (
+            apply_boundary_condition,
+            define_variational_form,
+            set_material_properties,
+        )
+        from dolfinx_mcp.tools.solver import solve
+        from dolfinx_mcp.tools.spaces import create_function_space, create_mixed_space
+
+        await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
+        await create_function_space(name="V", family="Lagrange", degree=2, shape=[2], ctx=ctx)
+        await create_function_space(name="Q", family="Lagrange", degree=1, ctx=ctx)
+        await create_mixed_space(name="W", subspaces=["V", "Q"], ctx=ctx)
+        await set_material_properties(name="f", value="0.0", function_space="Q", ctx=ctx)
+        await define_variational_form(
+            bilinear="inner(grad(split(u)[0]), grad(split(v)[0])) * dx - split(v)[0][0].dx(0) * split(u)[1] * dx + split(u)[0][0].dx(0) * split(v)[1] * dx",
+            linear="f * split(v)[1] * dx",
+            trial_space="W",
+            ctx=ctx,
+        )
+        await apply_boundary_condition(
+            value=[0.0, 0.0], boundary="True", sub_space=0, function_space="W", ctx=ctx,
+        )
+
+        # No petsc_options — auto-MUMPS should kick in
+        result = await solve(solver_type="direct", ctx=ctx)
+        assert "error" not in result, f"Solve failed: {result}"
+        assert result.get("converged", True)
+
+    @pytest.mark.asyncio
+    async def test_mixed_space_plot_auto_extract(self, ctx: MagicMock) -> None:
+        """F2: plot_solution auto-extracts sub-function from mixed-space solution."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.postprocess import plot_solution
+        from dolfinx_mcp.tools.problem import (
+            apply_boundary_condition,
+            define_variational_form,
+            set_material_properties,
+        )
+        from dolfinx_mcp.tools.solver import solve
+        from dolfinx_mcp.tools.spaces import create_function_space, create_mixed_space
+
+        await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
+        await create_function_space(name="V", family="Lagrange", degree=2, shape=[2], ctx=ctx)
+        await create_function_space(name="Q", family="Lagrange", degree=1, ctx=ctx)
+        await create_mixed_space(name="W", subspaces=["V", "Q"], ctx=ctx)
+        await set_material_properties(name="f", value="0.0", function_space="Q", ctx=ctx)
+        await define_variational_form(
+            bilinear="inner(grad(split(u)[0]), grad(split(v)[0])) * dx - split(v)[0][0].dx(0) * split(u)[1] * dx + split(u)[0][0].dx(0) * split(v)[1] * dx",
+            linear="f * split(v)[1] * dx",
+            trial_space="W",
+            ctx=ctx,
+        )
+        await apply_boundary_condition(
+            value=[0.0, 0.0], boundary="True", sub_space=0, function_space="W", ctx=ctx,
+        )
+        await solve(
+            solver_type="direct",
+            petsc_options={"pc_factor_mat_solver_type": "mumps"},
+            ctx=ctx,
+        )
+
+        # Plot should auto-extract sub-space 0 (velocity)
+        plot_result = await plot_solution(output_file="stokes_plot.png", ctx=ctx)
+        assert "error" not in plot_result, f"Plot failed: {plot_result}"
+        assert plot_result.get("mixed_space_info") is not None
+
+    @pytest.mark.asyncio
+    async def test_scalar_material_on_vector_space(self, ctx: MagicMock) -> None:
+        """F3: Scalar expression on vector space auto-creates scalar CG space."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import set_material_properties
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
+        await create_function_space(name="V", family="Lagrange", degree=1, shape=[2], ctx=ctx)
+
+        # This should NOT fail with shape mismatch — auto-scalar space kicks in
+        result = await set_material_properties(
+            name="mu", value="1.0 + x[0]", function_space="V", ctx=ctx,
+        )
+        assert "error" not in result, f"Material set failed: {result}"
+        assert result["name"] == "mu"
+
+
+# ---------------------------------------------------------------------------
+# Group M: DbC Audit fixes (BUG-1, INV-9, CASCADE-1)
+# ---------------------------------------------------------------------------
+
+
+class TestDbCAuditFixes:
+    """Tests for gaps found in DbC audit."""
+
+    @pytest.mark.asyncio
+    async def test_solve_eigenvalue_no_function_space_param(self, ctx: MagicMock) -> None:
+        """BUG-1: solve_eigenvalue without function_space param should not return INTERNAL_ERROR."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.solver import solve_eigenvalue
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
+        await create_function_space(name="V", family="Lagrange", degree=1, ctx=ctx)
+
+        # Call solve_eigenvalue WITHOUT specifying function_space
+        # Before fix: AttributeError → INTERNAL_ERROR
+        # After fix: uses first available space
+        result = await solve_eigenvalue(
+            stiffness_form="inner(grad(u), grad(v)) * dx",
+            mass_form="inner(u, v) * dx",
+            num_eigenvalues=3,
+            ctx=ctx,
+        )
+        assert result.get("error") != "INTERNAL_ERROR", (
+            f"Got INTERNAL_ERROR — active_space bug still present: {result}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_scalar_space_cleanup_after_space_deletion(self, ctx: MagicMock) -> None:
+        """CASCADE-1: Deleting vector space also removes auto-created _scalar_ space."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.problem import set_material_properties
+        from dolfinx_mcp.tools.session_mgmt import get_session_state, remove_object
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="mesh", nx=4, ny=4, ctx=ctx)
+        await create_function_space(name="V", family="Lagrange", degree=1, shape=[2], ctx=ctx)
+
+        # This creates _scalar_V automatically
+        result = await set_material_properties(
+            name="mu", value="1.0 + x[0]", function_space="V", ctx=ctx,
+        )
+        assert "error" not in result, f"Material set failed: {result}"
+
+        # Verify _scalar_V exists (overview returns dict keyed by name)
+        state = await get_session_state(ctx=ctx)
+        space_names = list(state["function_spaces"].keys())
+        assert "_scalar_V" in space_names, f"_scalar_V not found in {space_names}"
+
+        # Delete parent space V — should cascade to _scalar_V
+        rm_result = await remove_object(object_type="space", name="V", ctx=ctx)
+        assert "error" not in rm_result, f"Remove failed: {rm_result}"
+
+        # Verify _scalar_V is gone
+        state2 = await get_session_state(ctx=ctx)
+        space_names2 = list(state2["function_spaces"].keys())
+        assert "_scalar_V" not in space_names2, (
+            f"_scalar_V still present after parent deletion: {space_names2}"
         )

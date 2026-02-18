@@ -7,7 +7,7 @@ from typing import Any
 
 from mcp.server.fastmcp import Context
 
-from .._app import mcp
+from .._app import get_session, mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
@@ -16,13 +16,10 @@ from ..errors import (
     PreconditionError,
     handle_tool_errors,
 )
-from ..session import FunctionSpaceInfo, SessionState
+from ..session import FunctionSpaceInfo
+from ._validators import require_nonempty
 
 logger = logging.getLogger(__name__)
-
-
-def _get_session(ctx: Context) -> SessionState:
-    return ctx.request_context.lifespan_context
 
 
 @mcp.tool()
@@ -53,10 +50,8 @@ async def create_function_space(
         and optionally shape and variant.
     """
     # Preconditions
-    if not name:
-        raise PreconditionError("Function space name must be non-empty.")
-    if not family:
-        raise PreconditionError("Element family must be non-empty.")
+    require_nonempty(name, "Function space name")
+    require_nonempty(family, "Element family")
     if degree < 0:
         raise PreconditionError(f"degree must be >= 0, got {degree}.")
     if degree > 10:
@@ -83,7 +78,7 @@ async def create_function_space(
 
     import dolfinx.fem
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if name in session.function_spaces:
         raise DuplicateNameError(
@@ -141,6 +136,7 @@ async def create_function_space(
     )
 
     session.function_spaces[name] = fs_info
+    session._space_id_to_name[id(fs_info.space)] = name
 
     if __debug__:
         session.check_invariants()
@@ -184,7 +180,7 @@ async def create_mixed_space(
     import basix.ufl
     import dolfinx.fem
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if name in session.function_spaces:
         raise DuplicateNameError(
@@ -242,6 +238,7 @@ async def create_mixed_space(
     )
 
     session.function_spaces[name] = fs_info
+    session._space_id_to_name[id(fs_info.space)] = name
 
     if __debug__:
         session.check_invariants()

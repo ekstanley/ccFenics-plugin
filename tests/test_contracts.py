@@ -12,6 +12,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from conftest import (
+    assert_error_type,
+    make_bc_info,
+    make_entity_map_info,
+    make_form_info,
+    make_function_info,
+    make_mesh_info,
+    make_mesh_tags_info,
+    make_mock_ctx,
+    make_populated_session,
+    make_solution_info,
+    make_space_info,
+)
+
 from dolfinx_mcp.errors import (
     FileIOError,
     FunctionNotFoundError,
@@ -29,78 +43,6 @@ from dolfinx_mcp.session import (
     SessionState,
     SolutionInfo,
 )
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_mesh_info(name: str = "m1", num_cells: int = 100) -> MeshInfo:
-    return MeshInfo(
-        name=name,
-        mesh=MagicMock(),
-        cell_type="triangle",
-        num_cells=num_cells,
-        num_vertices=64,
-        gdim=2,
-        tdim=2,
-    )
-
-
-def _make_space_info(name: str = "V", mesh_name: str = "m1") -> FunctionSpaceInfo:
-    return FunctionSpaceInfo(
-        name=name,
-        space=MagicMock(),
-        mesh_name=mesh_name,
-        element_family="Lagrange",
-        element_degree=1,
-        num_dofs=64,
-    )
-
-
-def _make_function_info(name: str = "f", space_name: str = "V") -> FunctionInfo:
-    return FunctionInfo(
-        name=name,
-        function=MagicMock(),
-        space_name=space_name,
-    )
-
-
-def _make_bc_info(name: str = "bc0", space_name: str = "V") -> BCInfo:
-    return BCInfo(
-        name=name,
-        bc=MagicMock(),
-        space_name=space_name,
-        num_dofs=10,
-    )
-
-
-def _make_solution_info(name: str = "u_h", space_name: str = "V") -> SolutionInfo:
-    return SolutionInfo(
-        name=name,
-        function=MagicMock(),
-        space_name=space_name,
-        converged=True,
-        iterations=5,
-        residual_norm=1e-10,
-        wall_time=0.5,
-    )
-
-
-def _make_form_info(name: str = "bilinear") -> FormInfo:
-    return FormInfo(name=name, form=MagicMock(), ufl_form=MagicMock())
-
-
-def _populated_session() -> SessionState:
-    """Create a valid, populated session for invariant testing."""
-    s = SessionState()
-    s.meshes["m1"] = _make_mesh_info("m1")
-    s.function_spaces["V"] = _make_space_info("V", "m1")
-    s.functions["f"] = _make_function_info("f", "V")
-    s.bcs["bc0"] = _make_bc_info("bc0", "V")
-    s.solutions["u_h"] = _make_solution_info("u_h", "V")
-    s.active_mesh = "m1"
-    return s
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +148,7 @@ class TestDataclassContracts:
 
 class TestSessionInvariants:
     def test_check_invariants_valid_session(self):
-        session = _populated_session()
+        session = make_populated_session()
         # Should not raise
         session.check_invariants()
 
@@ -219,20 +161,20 @@ class TestSessionInvariants:
     def test_check_invariants_dangling_space_mesh_ref(self):
         session = SessionState()
         # Space references mesh "m1" which does not exist
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        with pytest.raises(InvariantError, match="non-existent mesh"):
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        with pytest.raises(InvariantError, match="Dangling mesh references"):
             session.check_invariants()
 
     def test_check_invariants_dangling_function_space_ref(self):
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         # Function references space "V" which does not exist
-        session.functions["f"] = _make_function_info("f", "V")
-        with pytest.raises(InvariantError, match="non-existent space"):
+        session.functions["f"] = make_function_info("f", "V")
+        with pytest.raises(InvariantError, match="Dangling space references"):
             session.check_invariants()
 
     def test_remove_mesh_postconditions(self):
-        session = _populated_session()
+        session = make_populated_session()
         session.remove_mesh("m1")
         # After removal, no references to "m1" should remain
         assert "m1" not in session.meshes
@@ -244,7 +186,7 @@ class TestSessionInvariants:
     def test_check_invariants_forms_without_spaces(self):
         """INV-8: forms non-empty with no function_spaces must raise."""
         session = SessionState()
-        session.forms["bilinear"] = _make_form_info("bilinear")
+        session.forms["bilinear"] = make_form_info("bilinear")
         # No function_spaces registered — INV-8 violated
         with pytest.raises(InvariantError, match="[Ff]orms.*no function_spaces"):
             session.check_invariants()
@@ -252,9 +194,9 @@ class TestSessionInvariants:
     def test_check_invariants_forms_with_spaces_ok(self):
         """INV-8: forms non-empty with function_spaces is valid."""
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.forms["bilinear"] = _make_form_info("bilinear")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.forms["bilinear"] = make_form_info("bilinear")
         # Should NOT raise — forms exist AND function_spaces exist
         session.check_invariants()
 
@@ -264,62 +206,55 @@ class TestSessionInvariants:
 # ---------------------------------------------------------------------------
 
 
-def _mock_ctx(session: SessionState):
-    """Create a mock MCP Context with the given session."""
-    ctx = MagicMock()
-    ctx.request_context.lifespan_context = session
-    return ctx
-
-
 class TestToolPreconditions:
     @pytest.mark.asyncio
     async def test_create_unit_square_rejects_zero_nx(self):
         from dolfinx_mcp.tools.mesh import create_unit_square
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await create_unit_square(name="m", nx=0, ny=8, ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_solve_time_dependent_rejects_negative_dt(self):
         from dolfinx_mcp.tools.solver import solve_time_dependent
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_time_dependent(t_end=1.0, dt=-0.1, ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_set_material_reserved_name(self):
         from dolfinx_mcp.tools.problem import set_material_properties
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await set_material_properties(name="grad", value=1.0, ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_evaluate_solution_rejects_empty_points(self):
         from dolfinx_mcp.tools.postprocess import evaluate_solution
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await evaluate_solution(points=[], ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_create_function_space_rejects_negative_degree(self):
         from dolfinx_mcp.tools.spaces import create_function_space
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await create_function_space(name="V", degree=-1, ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
 
 # ---------------------------------------------------------------------------
@@ -344,16 +279,11 @@ class TestFormInfoContracts:
 
 class TestExtendedCleanupContracts:
     def test_cleanup_asserts_all_registries(self):
-        session = _populated_session()
-        session.forms["bilinear"] = FormInfo(
-            name="bilinear", form=MagicMock(), ufl_form=MagicMock()
-        )
-        session.mesh_tags["tags"] = MeshTagsInfo(
-            name="tags", tags=MagicMock(), mesh_name="m1", dimension=1
-        )
-        session.entity_maps["em"] = EntityMapInfo(
-            name="em", entity_map=MagicMock(),
-            parent_mesh="m1", child_mesh="m1", dimension=2,
+        session = make_populated_session()
+        session.forms["bilinear"] = make_form_info("bilinear")
+        session.mesh_tags["tags"] = make_mesh_tags_info("tags")
+        session.entity_maps["em"] = make_entity_map_info(
+            "em", parent_mesh="m1", child_mesh="m1",
         )
         session.ufl_symbols["f"] = MagicMock()
         session.cleanup()
@@ -370,10 +300,9 @@ class TestExtendedCleanupContracts:
         assert session.active_mesh is None
 
     def test_remove_mesh_cleans_entity_maps(self):
-        session = _populated_session()
-        session.entity_maps["em1"] = EntityMapInfo(
-            name="em1", entity_map=MagicMock(),
-            parent_mesh="m1", child_mesh="m1", dimension=2,
+        session = make_populated_session()
+        session.entity_maps["em1"] = make_entity_map_info(
+            "em1", parent_mesh="m1", child_mesh="m1",
         )
         session.remove_mesh("m1")
         assert "em1" not in session.entity_maps
@@ -388,29 +317,26 @@ class TestExtendedCleanupContracts:
 class TestExtendedInvariants:
     def test_check_invariants_dangling_solution_ref(self):
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         # Solution references space "V" which does not exist
-        session.solutions["u_h"] = _make_solution_info("u_h", "V")
-        with pytest.raises(InvariantError, match="non-existent space"):
+        session.solutions["u_h"] = make_solution_info("u_h", "V")
+        with pytest.raises(InvariantError, match="Dangling space references"):
             session.check_invariants()
 
     def test_check_invariants_dangling_mesh_tags_ref(self):
         session = SessionState()
         # MeshTags references mesh "m1" which does not exist
-        session.mesh_tags["tags"] = MeshTagsInfo(
-            name="tags", tags=MagicMock(), mesh_name="m1", dimension=1
-        )
-        with pytest.raises(InvariantError, match="non-existent mesh"):
+        session.mesh_tags["tags"] = make_mesh_tags_info("tags")
+        with pytest.raises(InvariantError, match="Dangling mesh references"):
             session.check_invariants()
 
     def test_check_invariants_dangling_entity_map_ref(self):
         session = SessionState()
         # EntityMap references meshes that do not exist
-        session.entity_maps["em"] = EntityMapInfo(
-            name="em", entity_map=MagicMock(),
-            parent_mesh="m1", child_mesh="m2", dimension=2,
+        session.entity_maps["em"] = make_entity_map_info(
+            "em", parent_mesh="m1", child_mesh="m2",
         )
-        with pytest.raises(InvariantError, match="parent_mesh.*not found"):
+        with pytest.raises(InvariantError, match="Dangling mesh references"):
             session.check_invariants()
 
 
@@ -425,31 +351,31 @@ class TestExtendedToolPreconditions:
         from dolfinx_mcp.tools.mesh import create_mesh
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await create_mesh(
             name="m", shape="unit_square", cell_type="hexagon", nx=4, ny=4, ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_run_custom_code_rejects_empty_code(self):
         from dolfinx_mcp.tools.session_mgmt import run_custom_code
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await run_custom_code(code="", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_apply_bc_rejects_negative_sub_space(self):
         from dolfinx_mcp.tools.problem import apply_boundary_condition
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await apply_boundary_condition(
             value=0.0, boundary="True", sub_space=-1, ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
 
 # ---------------------------------------------------------------------------
@@ -463,52 +389,52 @@ class TestPhase3Contracts:
         from dolfinx_mcp.tools.interpolation import create_discrete_operator
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await create_discrete_operator(
             operator_type="divergence", source_space="V", target_space="W", ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_export_solution_invalid_format(self):
         from dolfinx_mcp.tools.postprocess import export_solution
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await export_solution(filename="out.csv", format="csv", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_assemble_invalid_target(self):
         from dolfinx_mcp.tools.session_mgmt import assemble
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await assemble(target="tensor", form="u*v*dx", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_compute_functionals_empty_expressions(self):
         from dolfinx_mcp.tools.postprocess import compute_functionals
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await compute_functionals(expressions=[], ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     def test_check_invariants_dangling_bc_space_ref(self):
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         # BC references space "V" which does not exist
-        session.bcs["bc0"] = _make_bc_info("bc0", "V")
-        with pytest.raises(InvariantError, match="non-existent space"):
+        session.bcs["bc0"] = make_bc_info("bc0", "V")
+        with pytest.raises(InvariantError, match="Dangling space references"):
             session.check_invariants()
 
     def test_postcondition_error_integration(self):
         """PostconditionError is caught by handle_tool_errors -> POSTCONDITION_VIOLATED."""
         err = PostconditionError("test postcondition failure")
         result = err.to_dict()
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "test postcondition failure" in result["message"]
 
     @pytest.mark.asyncio
@@ -516,9 +442,9 @@ class TestPhase3Contracts:
         from dolfinx_mcp.tools.postprocess import plot_solution
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await plot_solution(plot_type="3d", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
 
 # ---------------------------------------------------------------------------
@@ -532,49 +458,49 @@ class TestPhase4Contracts:
         from dolfinx_mcp.tools.mesh import create_mesh
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await create_mesh(
             name="m", shape="sphere", cell_type="triangle", nx=4, ny=4, ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_manage_mesh_tags_rejects_invalid_action(self):
         from dolfinx_mcp.tools.mesh import manage_mesh_tags
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await manage_mesh_tags(action="delete", name="tags", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_mark_boundaries_rejects_empty_markers(self):
         from dolfinx_mcp.tools.mesh import mark_boundaries
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await mark_boundaries(markers=[], ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_mark_boundaries_rejects_negative_tag(self):
         from dolfinx_mcp.tools.mesh import mark_boundaries
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await mark_boundaries(
             markers=[{"tag": -1, "condition": "True"}], ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_create_mixed_space_rejects_single_subspace(self):
         from dolfinx_mcp.tools.spaces import create_mixed_space
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await create_mixed_space(name="W", subspaces=["V"], ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
 
 # ---------------------------------------------------------------------------
@@ -588,80 +514,80 @@ class TestPhase5Contracts:
         from dolfinx_mcp.tools.solver import solve
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve(solver_type="mumps", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_solve_time_dependent_rejects_invalid_time_scheme(self):
         from dolfinx_mcp.tools.solver import solve_time_dependent
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await solve_time_dependent(
             t_end=1.0, dt=0.1, time_scheme="crank_nicolson", ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_define_variational_form_rejects_empty_bilinear(self):
         from dolfinx_mcp.tools.problem import define_variational_form
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await define_variational_form(bilinear="", linear="f*v*dx", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_compute_error_rejects_invalid_norm_type(self):
         from dolfinx_mcp.tools.postprocess import compute_error
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await compute_error(exact="x[0]", norm_type="Linf", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_query_point_values_rejects_zero_tolerance(self):
         from dolfinx_mcp.tools.postprocess import query_point_values
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await query_point_values(
             points=[[0.5, 0.5]], tolerance=0.0, ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_create_custom_mesh_rejects_empty_filename(self):
         from dolfinx_mcp.tools.mesh import create_custom_mesh
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await create_custom_mesh(name="m", filename="", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_create_submesh_rejects_empty_tag_values(self):
         from dolfinx_mcp.tools.mesh import create_submesh
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await create_submesh(
             name="sub", tags_name="tags", tag_values=[], ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_mark_boundaries_rejects_empty_condition(self):
         from dolfinx_mcp.tools.mesh import mark_boundaries
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await mark_boundaries(
             markers=[{"tag": 1, "condition": ""}], ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     def test_cleanup_clears_solver_diagnostics_and_log_buffer(self):
         session = SessionState()
@@ -683,40 +609,40 @@ class TestPhase6Contracts:
         from dolfinx_mcp.tools.problem import define_variational_form
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await define_variational_form(
             bilinear="inner(grad(u), grad(v)) * dx", linear="", ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_compute_error_rejects_empty_exact(self):
         from dolfinx_mcp.tools.postprocess import compute_error
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await compute_error(exact="", norm_type="L2", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_create_submesh_rejects_non_int_tag_values(self):
         from dolfinx_mcp.tools.mesh import create_submesh
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await create_submesh(
             name="sub", tags_name="tags", tag_values=["not_int"], ctx=ctx
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_create_unit_square_rejects_invalid_cell_type(self):
         from dolfinx_mcp.tools.mesh import create_unit_square
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         result = await create_unit_square(name="m", cell_type="pentagon", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
 
 # ---------------------------------------------------------------------------
@@ -733,8 +659,8 @@ class TestPhase8ErrorIntegrity:
         from dolfinx_mcp.tools.postprocess import compute_functionals
 
         session = SessionState()
-        session.functions["f"] = _make_function_info("f", "V")
-        ctx = _mock_ctx(session)
+        session.functions["f"] = make_function_info("f", "V")
+        ctx = make_mock_ctx(session)
 
         mock_fem = MagicMock()
         mock_fem.form.return_value = MagicMock()
@@ -750,7 +676,7 @@ class TestPhase8ErrorIntegrity:
             patch("dolfinx_mcp.ufl_context.safe_evaluate", return_value=MagicMock()):
             result = await compute_functionals(expressions=["u*dx"], ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_assemble_scalar_preserves_api_error(self):
@@ -760,7 +686,7 @@ class TestPhase8ErrorIntegrity:
         from dolfinx_mcp.tools.session_mgmt import assemble
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         mock_fem = MagicMock()
         mock_fem.form.return_value = MagicMock()
@@ -782,7 +708,7 @@ class TestPhase8ErrorIntegrity:
             patch("dolfinx_mcp.ufl_context.safe_evaluate", return_value=MagicMock()):
             result = await assemble(target="scalar", form="u*v*dx", ctx=ctx)
 
-        assert result["error"] == "DOLFINX_API_ERROR"
+        assert_error_type(result, "DOLFINX_API_ERROR")
 
     @pytest.mark.asyncio
     async def test_run_custom_code_checks_invariants(self):
@@ -791,8 +717,8 @@ class TestPhase8ErrorIntegrity:
 
         from dolfinx_mcp.tools.session_mgmt import run_custom_code
 
-        session = _populated_session()
-        ctx = _mock_ctx(session)
+        session = make_populated_session()
+        ctx = make_mock_ctx(session)
 
         with patch.dict(sys.modules, {
             "dolfinx": MagicMock(),
@@ -822,7 +748,7 @@ class TestPhase9ExceptionGuards:
         from dolfinx_mcp.tools.session_mgmt import assemble
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         def raise_invalid_ufl(*args, **kwargs):
             raise InvalidUFLExpressionError("bad expression 'xyz'")
@@ -836,7 +762,7 @@ class TestPhase9ExceptionGuards:
             patch("dolfinx_mcp.ufl_context.safe_evaluate", side_effect=raise_invalid_ufl):
             result = await assemble(target="scalar", form="xyz", ctx=ctx)
 
-        assert result["error"] == "INVALID_UFL_EXPRESSION"
+        assert_error_type(result, "INVALID_UFL_EXPRESSION")
         assert "bad expression" in result["message"]
 
     @pytest.mark.asyncio
@@ -848,7 +774,7 @@ class TestPhase9ExceptionGuards:
         from dolfinx_mcp.tools.session_mgmt import assemble
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         mock_fem = MagicMock()
         mock_fem.form.side_effect = RuntimeError("PETSc segfault")
@@ -862,7 +788,7 @@ class TestPhase9ExceptionGuards:
             patch("dolfinx_mcp.ufl_context.safe_evaluate", return_value=MagicMock()):
             result = await assemble(target="scalar", form="u*v*dx", ctx=ctx)
 
-        assert result["error"] == "DOLFINX_API_ERROR"
+        assert_error_type(result, "DOLFINX_API_ERROR")
         assert "Assembly failed" in result["message"]
         assert "suggestion" in result
 
@@ -874,12 +800,12 @@ class TestPhase9ExceptionGuards:
         from dolfinx_mcp.tools.mesh import create_unit_square
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # PreconditionError fires before the try block (nx=0), so it propagates
         # through @handle_tool_errors directly. Verify structured result.
         result = await create_unit_square(name="m", nx=0, ny=8, ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
         assert "nx must be > 0" in result["message"]
 
 
@@ -891,7 +817,7 @@ class TestPhase9ExceptionGuards:
 class TestPhase10Contracts:
     def test_get_mesh_postcondition_name_mismatch(self):
         """Debug postcondition fires when MeshInfo.name != registry key."""
-        session = _populated_session()
+        session = make_populated_session()
         # Mutate name after insertion to create registry inconsistency
         session.meshes["m1"].name = "wrong_name"
         with pytest.raises(PostconditionError, match="MeshInfo.name.*!= registry key"):
@@ -899,14 +825,14 @@ class TestPhase10Contracts:
 
     def test_get_space_postcondition_name_mismatch(self):
         """Debug postcondition fires when FunctionSpaceInfo.name != registry key."""
-        session = _populated_session()
+        session = make_populated_session()
         session.function_spaces["V"].name = "wrong_name"
         with pytest.raises(PostconditionError, match="FunctionSpaceInfo.name.*!= registry key"):
             session.get_space("V")
 
     def test_get_space_postcondition_dangling_mesh(self):
         """Debug postcondition fires when space references deleted mesh."""
-        session = _populated_session()
+        session = make_populated_session()
         # Directly delete mesh without cascade to create dangling reference
         del session.meshes["m1"]
         session.active_mesh = None
@@ -915,14 +841,14 @@ class TestPhase10Contracts:
 
     def test_get_function_postcondition_name_mismatch(self):
         """Debug postcondition fires when FunctionInfo.name != registry key."""
-        session = _populated_session()
+        session = make_populated_session()
         session.functions["f"].name = "wrong_name"
         with pytest.raises(PostconditionError, match="FunctionInfo.name.*!= registry key"):
             session.get_function("f")
 
     def test_get_function_postcondition_dangling_space(self):
         """Debug postcondition fires when function references deleted space."""
-        session = _populated_session()
+        session = make_populated_session()
         # Directly delete space without cascade
         del session.function_spaces["V"]
         with pytest.raises(PostconditionError, match="space.*not in function_spaces registry"):
@@ -930,7 +856,7 @@ class TestPhase10Contracts:
 
     def test_get_only_space_postcondition_dangling_mesh(self):
         """Debug postcondition fires when sole space references deleted mesh."""
-        session = _populated_session()
+        session = make_populated_session()
         # Remove all but one space, then delete its mesh directly
         del session.meshes["m1"]
         session.active_mesh = None
@@ -950,9 +876,9 @@ class TestPhase10Contracts:
         mock_func = MagicMock()
         mock_func.function_space.mesh.topology.dim = 2
         mock_func.eval.return_value = np.array([float("nan")])
-        session.solutions["u_h"] = _make_solution_info("u_h", "V")
+        session.solutions["u_h"] = make_solution_info("u_h", "V")
         session.solutions["u_h"].function = mock_func
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         mock_geometry = MagicMock()
         mock_colliding = MagicMock()
@@ -965,7 +891,7 @@ class TestPhase10Contracts:
         }):
             result = await evaluate_solution(points=[[0.5, 0.5]], ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "non-finite value" in result["message"]
 
     @pytest.mark.asyncio
@@ -981,9 +907,9 @@ class TestPhase10Contracts:
         mock_func = MagicMock()
         mock_func.function_space.mesh.topology.dim = 2
         mock_func.eval.return_value = np.array([float("nan")])
-        session.solutions["u_h"] = _make_solution_info("u_h", "V")
+        session.solutions["u_h"] = make_solution_info("u_h", "V")
         session.solutions["u_h"].function = mock_func
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         mock_geometry = MagicMock()
         mock_colliding = MagicMock()
@@ -996,7 +922,7 @@ class TestPhase10Contracts:
         }):
             result = await query_point_values(points=[[0.5, 0.5]], ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "non-finite value" in result["message"]
 
     def test_safe_evaluate_rejects_none_result(self):
@@ -1020,14 +946,14 @@ class TestPhase11Contracts:
 
     def test_get_solution_postcondition_name_mismatch(self):
         """Debug postcondition fires when SolutionInfo.name != registry key."""
-        session = _populated_session()
+        session = make_populated_session()
         session.solutions["u_h"].name = "wrong_name"
         with pytest.raises(PostconditionError, match="SolutionInfo.name.*!= registry key"):
             session.get_solution("u_h")
 
     def test_get_solution_postcondition_dangling_space(self):
         """Debug postcondition fires when solution references deleted space."""
-        session = _populated_session()
+        session = make_populated_session()
         # Directly delete space without cascade to create dangling reference
         del session.function_spaces["V"]
         with pytest.raises(PostconditionError, match="space.*not in function_spaces registry"):
@@ -1041,7 +967,7 @@ class TestPhase11Contracts:
 
     def test_get_solution_returns_correct_info(self):
         """get_solution returns the correct SolutionInfo for a valid key."""
-        session = _populated_session()
+        session = make_populated_session()
         result = session.get_solution("u_h")
         assert result.name == "u_h"
         assert result.space_name == "V"
@@ -1090,8 +1016,8 @@ class TestPhase11Contracts:
         Directly verify the postcondition logic by constructing a scenario
         where refined_info.num_cells <= mesh_info.num_cells.
         """
-        original = _make_mesh_info("m1", num_cells=100)
-        refined = _make_mesh_info("m1_refined", num_cells=80)  # fewer cells -> violation
+        original = make_mesh_info("m1", num_cells=100)
+        refined = make_mesh_info("m1_refined", num_cells=80)  # fewer cells -> violation
 
         # Simulate the postcondition check from refine_mesh
         assert refined.num_cells <= original.num_cells, \
@@ -1104,8 +1030,8 @@ class TestPhase11Contracts:
 
     def test_refine_mesh_postcondition_cell_count_passes(self):
         """No postcondition fires when refined mesh has more cells."""
-        original = _make_mesh_info("m1", num_cells=100)
-        refined = _make_mesh_info("m1_refined", num_cells=200)  # more cells -> OK
+        original = make_mesh_info("m1", num_cells=100)
+        refined = make_mesh_info("m1_refined", num_cells=200)  # more cells -> OK
 
         assert refined.num_cells > original.num_cells, \
             "Refinement must increase cell count"
@@ -1119,9 +1045,9 @@ class TestPhase11Contracts:
         from dolfinx_mcp.tools.mesh import refine_mesh
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")  # num_cells=100
+        session.meshes["m1"] = make_mesh_info("m1")  # num_cells=100
         session.active_mesh = "m1"
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # Build a mock refined mesh with fewer cells than original
         mock_index_map = MagicMock()
@@ -1148,7 +1074,7 @@ class TestPhase11Contracts:
         }):
             result = await refine_mesh(name="m1", ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "expected more than original" in result["message"]
 
 
@@ -1163,14 +1089,14 @@ class TestPhase12InterpolationPostconditionErrorType:
         from dolfinx_mcp.tools.interpolation import interpolate
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
 
         # Mock function whose .x.array triggers isfinite -> False (NaN)
         mock_func = MagicMock()
         mock_isfinite_result = MagicMock()
         mock_isfinite_result.all.return_value = False
-        session.functions["f"] = _make_function_info("f", "V")
+        session.functions["f"] = make_function_info("f", "V")
         session.functions["f"].function = mock_func
 
         ctx = MagicMock()
@@ -1189,7 +1115,7 @@ class TestPhase12InterpolationPostconditionErrorType:
         }):
             result = await interpolate(target="f", expression="0*x[0]", ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "NaN" in result["message"] or "Inf" in result["message"]
 
     @pytest.mark.asyncio
@@ -1200,12 +1126,12 @@ class TestPhase12InterpolationPostconditionErrorType:
         from dolfinx_mcp.tools.interpolation import interpolate
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
 
         # Source and target functions
-        session.functions["src"] = _make_function_info("src", "V")
-        session.functions["tgt"] = _make_function_info("tgt", "V")
+        session.functions["src"] = make_function_info("src", "V")
+        session.functions["tgt"] = make_function_info("tgt", "V")
 
         # Mock target function -- isfinite will return False (NaN postcondition)
         mock_isfinite_result = MagicMock()
@@ -1225,7 +1151,7 @@ class TestPhase12InterpolationPostconditionErrorType:
         }):
             result = await interpolate(target="tgt", source_function="src", ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "NaN" in result["message"] or "Inf" in result["message"]
 
 
@@ -1233,32 +1159,6 @@ class TestPhase12InterpolationPostconditionErrorType:
 # Phase 13: Accessor tests -- get_mesh_tags, get_entity_map, get_last_solution
 # ---------------------------------------------------------------------------
 
-
-def _make_mesh_tags_info(
-    name: str = "tags0", mesh_name: str = "m1", dimension: int = 1
-) -> MeshTagsInfo:
-    return MeshTagsInfo(
-        name=name,
-        tags=MagicMock(),
-        mesh_name=mesh_name,
-        dimension=dimension,
-        unique_tags=[1, 2, 3],
-    )
-
-
-def _make_entity_map_info(
-    name: str = "emap0",
-    parent_mesh: str = "m1",
-    child_mesh: str = "m1_sub",
-    dimension: int = 2,
-) -> EntityMapInfo:
-    return EntityMapInfo(
-        name=name,
-        entity_map=MagicMock(),
-        parent_mesh=parent_mesh,
-        child_mesh=child_mesh,
-        dimension=dimension,
-    )
 
 
 class TestPhase13GetMeshTags:
@@ -1273,8 +1173,8 @@ class TestPhase13GetMeshTags:
     def test_get_mesh_tags_postcondition_name_mismatch(self):
         """Debug postcondition fires if MeshTagsInfo.name != registry key."""
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        tags_info = _make_mesh_tags_info("wrong_name", mesh_name="m1")
+        session.meshes["m1"] = make_mesh_info("m1")
+        tags_info = make_mesh_tags_info("wrong_name", mesh_name="m1")
         session.mesh_tags["tags0"] = tags_info  # key != tags_info.name
 
         with pytest.raises(Exception) as exc_info:
@@ -1285,7 +1185,7 @@ class TestPhase13GetMeshTags:
         """Debug postcondition fires if mesh_name not in meshes."""
         session = SessionState()
         # No mesh registered, but tags reference "m1"
-        tags_info = _make_mesh_tags_info("tags0", mesh_name="m1")
+        tags_info = make_mesh_tags_info("tags0", mesh_name="m1")
         session.mesh_tags["tags0"] = tags_info
 
         with pytest.raises(Exception) as exc_info:
@@ -1305,9 +1205,9 @@ class TestPhase13GetEntityMap:
     def test_get_entity_map_postcondition_name_mismatch(self):
         """Debug postcondition fires if EntityMapInfo.name != registry key."""
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.meshes["m1_sub"] = _make_mesh_info("m1_sub")
-        emap_info = _make_entity_map_info("wrong_name", parent_mesh="m1", child_mesh="m1_sub")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.meshes["m1_sub"] = make_mesh_info("m1_sub")
+        emap_info = make_entity_map_info("wrong_name", parent_mesh="m1", child_mesh="m1_sub")
         session.entity_maps["emap0"] = emap_info  # key != emap_info.name
 
         with pytest.raises(Exception) as exc_info:
@@ -1318,8 +1218,8 @@ class TestPhase13GetEntityMap:
         """Debug postcondition fires if parent_mesh not in meshes."""
         session = SessionState()
         # child mesh exists but parent does not
-        session.meshes["m1_sub"] = _make_mesh_info("m1_sub")
-        emap_info = _make_entity_map_info("emap0", parent_mesh="m1", child_mesh="m1_sub")
+        session.meshes["m1_sub"] = make_mesh_info("m1_sub")
+        emap_info = make_entity_map_info("emap0", parent_mesh="m1", child_mesh="m1_sub")
         session.entity_maps["emap0"] = emap_info
 
         with pytest.raises(Exception) as exc_info:
@@ -1339,10 +1239,10 @@ class TestPhase13GetLastSolution:
     def test_get_last_solution_returns_latest(self):
         """Returns the most recently added solution."""
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.solutions["sol1"] = _make_solution_info("sol1", "V")
-        session.solutions["sol2"] = _make_solution_info("sol2", "V")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.solutions["sol1"] = make_solution_info("sol1", "V")
+        session.solutions["sol2"] = make_solution_info("sol2", "V")
 
         result = session.get_last_solution()
         assert result.name == "sol2"
@@ -1351,7 +1251,7 @@ class TestPhase13GetLastSolution:
         """Debug postcondition fires if space_name not in function_spaces."""
         session = SessionState()
         # Add solution referencing space "V" without registering the space
-        sol = _make_solution_info("u_h", "V")
+        sol = make_solution_info("u_h", "V")
         session.solutions["u_h"] = sol
 
         with pytest.raises(Exception) as exc_info:
@@ -1375,7 +1275,7 @@ class TestPhase14RemoveObject:
         ctx.request_context.lifespan_context = SessionState()
 
         result = await remove_object(name="", object_type="function", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_remove_object_invalid_type(self):
@@ -1385,7 +1285,7 @@ class TestPhase14RemoveObject:
         ctx.request_context.lifespan_context = SessionState()
 
         result = await remove_object(name="x", object_type="widget", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_remove_object_not_found(self):
@@ -1395,7 +1295,7 @@ class TestPhase14RemoveObject:
         ctx.request_context.lifespan_context = SessionState()
 
         result = await remove_object(name="nonexistent", object_type="function", ctx=ctx)
-        assert result["error"] == "DOLFINX_API_ERROR"
+        assert_error_type(result, "DOLFINX_API_ERROR")
 
     @pytest.mark.asyncio
     async def test_remove_object_mesh_cascade(self):
@@ -1403,10 +1303,10 @@ class TestPhase14RemoveObject:
         from dolfinx_mcp.tools.session_mgmt import remove_object
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.functions["f"] = _make_function_info("f", "V")
-        session.solutions["sol"] = _make_solution_info("sol", "V")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.functions["f"] = make_function_info("f", "V")
+        session.solutions["sol"] = make_solution_info("sol", "V")
 
         ctx = MagicMock()
         ctx.request_context.lifespan_context = session
@@ -1425,10 +1325,10 @@ class TestPhase14RemoveObject:
         from dolfinx_mcp.tools.session_mgmt import remove_object
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.functions["f1"] = _make_function_info("f1", "V")
-        session.functions["f2"] = _make_function_info("f2", "V")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.functions["f1"] = make_function_info("f1", "V")
+        session.functions["f2"] = make_function_info("f2", "V")
 
         ctx = MagicMock()
         ctx.request_context.lifespan_context = session
@@ -1462,7 +1362,7 @@ class TestPhase14ComputeMeshQuality:
         from dolfinx_mcp.tools.mesh import compute_mesh_quality
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
 
         ctx = MagicMock()
         ctx.request_context.lifespan_context = session
@@ -1489,7 +1389,7 @@ class TestPhase14ComputeMeshQuality:
         from dolfinx_mcp.tools.mesh import compute_mesh_quality
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
 
         ctx = MagicMock()
@@ -1516,7 +1416,7 @@ class TestPhase14Project:
         result = await project(
             name="", target_space="V", expression="0*x[0]", ctx=ctx,
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_project_both_expression_and_source(self):
@@ -1532,7 +1432,7 @@ class TestPhase14Project:
             source_function="f",
             ctx=ctx,
         )
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_project_neither_expression_nor_source(self):
@@ -1542,7 +1442,7 @@ class TestPhase14Project:
         ctx.request_context.lifespan_context = SessionState()
 
         result = await project(name="p", target_space="V", ctx=ctx)
-        assert result["error"] == "PRECONDITION_VIOLATED"
+        assert_error_type(result, "PRECONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_project_postcondition_nan(self):
@@ -1552,9 +1452,9 @@ class TestPhase14Project:
         from dolfinx_mcp.tools.interpolation import project
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.functions["src"] = _make_function_info("src", "V")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.functions["src"] = make_function_info("src", "V")
 
         ctx = MagicMock()
         ctx.request_context.lifespan_context = session
@@ -1580,7 +1480,7 @@ class TestPhase14Project:
                 name="p", target_space="V", source_function="src", ctx=ctx,
             )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
 
 
 # ---------------------------------------------------------------------------
@@ -1620,7 +1520,7 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.mesh import create_unit_square
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         mock_mesh = _mock_mesh_with_zero_cells()
 
         mock_dolfinx_mesh = MagicMock()
@@ -1639,7 +1539,7 @@ class TestPhase17Postconditions:
             }):
                 result = await create_unit_square(name="m", nx=2, ny=2, ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "cells" in result["message"]
 
     @pytest.mark.asyncio
@@ -1650,7 +1550,7 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.mesh import create_mesh
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         mock_mesh = _mock_mesh_with_zero_cells()
 
         mock_dolfinx_mesh = MagicMock()
@@ -1671,7 +1571,7 @@ class TestPhase17Postconditions:
                     name="m", shape="unit_square", nx=2, ny=2, ctx=ctx,
                 )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "cells" in result["message"]
 
     @pytest.mark.asyncio
@@ -1682,7 +1582,7 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.mesh import create_custom_mesh
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
         mock_mesh = _mock_mesh_with_zero_cells()
         mock_mesh.topology.cell_type = "unmapped_type"
 
@@ -1711,7 +1611,7 @@ class TestPhase17Postconditions:
                     name="m", filename="test.msh", ctx=ctx,
                 )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "cells" in result["message"]
 
     # -- get_mesh_info postcondition (NaN bounding box) --
@@ -1724,7 +1624,7 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.mesh import get_mesh_info
 
         session = SessionState()
-        mesh_info = _make_mesh_info("m1")
+        mesh_info = make_mesh_info("m1")
 
         # Mock coords so .min/.max work but isfinite fails
         mock_min_result = MagicMock()
@@ -1738,7 +1638,7 @@ class TestPhase17Postconditions:
 
         session.meshes["m1"] = mesh_info
         session.active_mesh = "m1"
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # Mock numpy so np.isfinite(coords).all() returns False
         mock_np = MagicMock()
@@ -1749,7 +1649,7 @@ class TestPhase17Postconditions:
         with patch.dict(sys.modules, {"numpy": mock_np}):
             result = await get_mesh_info(name="m1", ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "NaN" in result["message"] or "Inf" in result["message"]
 
     # -- mark_boundaries postcondition (empty tags) --
@@ -1762,11 +1662,11 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.mesh import mark_boundaries
 
         session = SessionState()
-        mesh_info = _make_mesh_info("m1")
+        mesh_info = make_mesh_info("m1")
         mesh_info.mesh.topology.dim = 2
         session.meshes["m1"] = mesh_info
         session.active_mesh = "m1"
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # Mock empty facet array from locate_entities_boundary
         mock_empty_facets = MagicMock()
@@ -1794,7 +1694,7 @@ class TestPhase17Postconditions:
                 ctx=ctx,
             )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "no tagged facets" in result["message"]
 
     # -- create_submesh postcondition (exceeds parent cells) --
@@ -1807,17 +1707,16 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.mesh import create_submesh
 
         session = SessionState()
-        session.meshes["parent"] = _make_mesh_info("parent", num_cells=10)
+        session.meshes["parent"] = make_mesh_info("parent", num_cells=10)
         session.active_mesh = "parent"
 
         mock_tags = MagicMock()
         mock_tags.values = MagicMock()
         mock_tags.indices = MagicMock()
-        session.mesh_tags["ftags"] = MeshTagsInfo(
-            name="ftags", tags=mock_tags, mesh_name="parent",
-            dimension=1, unique_tags=[1],
+        session.mesh_tags["ftags"] = make_mesh_tags_info(
+            "ftags", tags=mock_tags, unique_tags=[1],
         )
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # Mock entities returned after np.isin filtering
         mock_entities = MagicMock()
@@ -1861,7 +1760,7 @@ class TestPhase17Postconditions:
                     name="sub", tags_name="ftags", tag_values=[1], ctx=ctx,
                 )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "exceeding parent" in result["message"]
 
     # -- manage_mesh_tags postcondition (empty tags on create) --
@@ -1874,9 +1773,9 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.mesh import manage_mesh_tags
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         mock_dolfinx_mesh = MagicMock()
         mock_dolfinx_mesh.meshtags.return_value = MagicMock()
@@ -1901,7 +1800,7 @@ class TestPhase17Postconditions:
                 ctx=ctx,
             )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "no tagged entities" in result["message"]
 
     # -- Function space postconditions (2 tools) --
@@ -1914,9 +1813,9 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.spaces import create_function_space
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         mock_dofmap = MagicMock()
         mock_dofmap.index_map.size_local = 0
@@ -1938,7 +1837,7 @@ class TestPhase17Postconditions:
                     name="V", degree=1, ctx=ctx,
                 )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "DOFs" in result["message"]
 
     @pytest.mark.asyncio
@@ -1949,11 +1848,11 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.spaces import create_mixed_space
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        session.function_spaces["V1"] = _make_space_info("V1", "m1")
-        session.function_spaces["V2"] = _make_space_info("V2", "m1")
-        ctx = _mock_ctx(session)
+        session.function_spaces["V1"] = make_space_info("V1", "m1")
+        session.function_spaces["V2"] = make_space_info("V2", "m1")
+        ctx = make_mock_ctx(session)
 
         mock_dofmap = MagicMock()
         mock_dofmap.index_map.size_local = 0
@@ -1978,7 +1877,7 @@ class TestPhase17Postconditions:
                     name="W", subspaces=["V1", "V2"], ctx=ctx,
                 )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "DOFs" in result["message"]
 
     # -- create_discrete_operator postcondition (zero dimensions) --
@@ -1991,11 +1890,11 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.interpolation import create_discrete_operator
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        session.function_spaces["V1"] = _make_space_info("V1", "m1")
-        session.function_spaces["V2"] = _make_space_info("V2", "m1")
-        ctx = _mock_ctx(session)
+        session.function_spaces["V1"] = make_space_info("V1", "m1")
+        session.function_spaces["V2"] = make_space_info("V2", "m1")
+        ctx = make_mock_ctx(session)
 
         mock_operator = MagicMock()
         mock_operator.getSize.return_value = (0, 0)
@@ -2016,7 +1915,7 @@ class TestPhase17Postconditions:
                 ctx=ctx,
             )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "dimensions" in result["message"]
 
     # -- define_variational_form postcondition (None form) --
@@ -2029,10 +1928,10 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.problem import define_variational_form
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        ctx = _mock_ctx(session)
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        ctx = make_mock_ctx(session)
 
         mock_ufl = MagicMock()
         mock_dolfinx_fem = MagicMock()
@@ -2054,7 +1953,7 @@ class TestPhase17Postconditions:
                     ctx=ctx,
                 )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "None" in result["message"]
 
     # -- set_material_properties postcondition (NaN after interpolation) --
@@ -2067,10 +1966,10 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.problem import set_material_properties
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        ctx = _mock_ctx(session)
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        ctx = make_mock_ctx(session)
 
         mock_isfinite_result = MagicMock()
         mock_isfinite_result.all.return_value = False
@@ -2091,7 +1990,7 @@ class TestPhase17Postconditions:
                 function_space="V", ctx=ctx,
             )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "NaN" in result["message"] or "Inf" in result["message"]
 
     # -- export_solution postcondition (empty file) --
@@ -2104,11 +2003,11 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.postprocess import export_solution
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.solutions["u_h"] = _make_solution_info("u_h", "V")
-        ctx = _mock_ctx(session)
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.solutions["u_h"] = make_solution_info("u_h", "V")
+        ctx = make_mock_ctx(session)
 
         mock_dolfinx_io = MagicMock()
         mock_dolfinx = MagicMock()
@@ -2126,7 +2025,7 @@ class TestPhase17Postconditions:
                 filename="test.xdmf", format="xdmf", ctx=ctx,
             )
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "empty file" in result["message"]
 
     # -- plot_solution postcondition (file not created) --
@@ -2139,11 +2038,11 @@ class TestPhase17Postconditions:
         from dolfinx_mcp.tools.postprocess import plot_solution
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        session.solutions["u_h"] = _make_solution_info("u_h", "V")
-        ctx = _mock_ctx(session)
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.solutions["u_h"] = make_solution_info("u_h", "V")
+        ctx = make_mock_ctx(session)
 
         mock_pyvista = MagicMock()
         mock_dolfinx_plot = MagicMock()
@@ -2160,7 +2059,7 @@ class TestPhase17Postconditions:
         }):
             result = await plot_solution(ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "not created" in result["message"]
 
 
@@ -2170,8 +2069,8 @@ class TestPhase19Deduplication:
     def test_find_space_name_found(self):
         """find_space_name returns correct name when space object matches."""
         session = SessionState()
-        space_info = _make_space_info("V", "m1")
-        session.meshes["m1"] = _make_mesh_info("m1")
+        space_info = make_space_info("V", "m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.function_spaces["V"] = space_info
 
         result = session.find_space_name(space_info.space)
@@ -2180,8 +2079,8 @@ class TestPhase19Deduplication:
     def test_find_space_name_not_found(self):
         """find_space_name returns 'unknown' when no match."""
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
 
         result = session.find_space_name(MagicMock())
         assert result == "unknown"
@@ -2227,7 +2126,7 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.session_mgmt import get_session_state
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         result = await get_session_state(ctx=ctx)
 
@@ -2245,12 +2144,12 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.session_mgmt import get_session_state
 
         session = SessionState()
-        mesh_info = _make_mesh_info("m1")
+        mesh_info = make_mesh_info("m1")
         session.meshes["m1"] = mesh_info
         session.active_mesh = "m1"
-        space_info = _make_space_info("V", "m1")
+        space_info = make_space_info("V", "m1")
         session.function_spaces["V"] = space_info
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         result = await get_session_state(ctx=ctx)
 
@@ -2264,9 +2163,9 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.session_mgmt import get_session_state
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # Remove the mesh
         session.remove_mesh("m1")
@@ -2284,10 +2183,10 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.session_mgmt import reset_session
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        session.function_spaces["V"] = _make_space_info("V", "m1")
-        ctx = _mock_ctx(session)
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        ctx = make_mock_ctx(session)
 
         await reset_session(ctx=ctx)
 
@@ -2301,7 +2200,7 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.session_mgmt import reset_session
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         result = await reset_session(ctx=ctx)
 
@@ -2313,9 +2212,9 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.session_mgmt import reset_session
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
+        session.meshes["m1"] = make_mesh_info("m1")
         session.active_mesh = "m1"
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         result = await reset_session(ctx=ctx)
 
@@ -2332,14 +2231,14 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.mesh import get_mesh_info
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # Mock numpy so the top-of-function import succeeds before accessor fires
         mock_np = MagicMock()
         with patch.dict(sys.modules, {"numpy": mock_np}):
             result = await get_mesh_info(name="nonexistent", ctx=ctx)
 
-        assert result["error"] == "MESH_NOT_FOUND"
+        assert_error_type(result, "MESH_NOT_FOUND")
 
     @pytest.mark.asyncio
     async def test_get_mesh_info_returns_expected_keys(self):
@@ -2349,7 +2248,7 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.mesh import get_mesh_info
 
         session = SessionState()
-        mesh_info = _make_mesh_info("m1")
+        mesh_info = make_mesh_info("m1")
 
         # Mock coords for bbox computation
         mock_min_result = MagicMock()
@@ -2363,7 +2262,7 @@ class TestPhase20LocalTestCompletion:
 
         session.meshes["m1"] = mesh_info
         session.active_mesh = "m1"
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # Mock numpy so isfinite passes
         mock_np = MagicMock()
@@ -2388,7 +2287,7 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.mesh import get_mesh_info
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # Mock numpy so the top-of-function import succeeds before accessor fires
         mock_np = MagicMock()
@@ -2396,7 +2295,7 @@ class TestPhase20LocalTestCompletion:
             # No active mesh set -> accessor should raise
             result = await get_mesh_info(ctx=ctx)
 
-        assert result["error"] == "NO_ACTIVE_MESH"
+        assert_error_type(result, "NO_ACTIVE_MESH")
 
     # -- get_solver_diagnostics (3 tests) --
 
@@ -2406,12 +2305,12 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.solver import get_solver_diagnostics
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         result = await get_solver_diagnostics(ctx=ctx)
 
         # get_last_solution() raises DOLFINxAPIError -> error_code = "DOLFINX_API_ERROR"
-        assert result["error"] == "DOLFINX_API_ERROR"
+        assert_error_type(result, "DOLFINX_API_ERROR")
 
     @pytest.mark.asyncio
     async def test_get_solver_diagnostics_returns_expected_keys(self):
@@ -2420,8 +2319,8 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.solver import get_solver_diagnostics
 
         session = SessionState()
-        session.meshes["m1"] = _make_mesh_info("m1")
-        session.function_spaces["V"] = _make_space_info("V", "m1")
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
 
         mock_func = MagicMock()
         mock_func.function_space.dofmap.index_map.size_global = 64
@@ -2437,7 +2336,7 @@ class TestPhase20LocalTestCompletion:
             wall_time=0.5,
         )
         session.solutions["u_h"] = sol_info
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # Mock compute_l2_norm at its source module (lazy-imported inside function body)
         with patch("dolfinx_mcp.utils.compute_l2_norm", return_value=1.234):
@@ -2455,7 +2354,7 @@ class TestPhase20LocalTestCompletion:
         from dolfinx_mcp.tools.solver import get_solver_diagnostics
 
         session = SessionState()
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # No solutions -> accessor raises
         result = await get_solver_diagnostics(ctx=ctx)
@@ -2478,10 +2377,10 @@ class TestPhase22PostconditionEdgeCases:
 
         from dolfinx_mcp.tools.solver import solve
 
-        session = _populated_session()
-        session.forms["bilinear"] = _make_form_info("bilinear")
-        session.forms["linear"] = _make_form_info("linear")
-        ctx = _mock_ctx(session)
+        session = make_populated_session()
+        session.forms["bilinear"] = make_form_info("bilinear")
+        session.forms["linear"] = make_form_info("linear")
+        ctx = make_mock_ctx(session)
 
         # Mock full dolfinx hierarchy + numpy
         mock_dolfinx = MagicMock()
@@ -2508,10 +2407,10 @@ class TestPhase22PostconditionEdgeCases:
 
         from dolfinx_mcp.tools.solver import solve
 
-        session = _populated_session()
-        session.forms["bilinear"] = _make_form_info("bilinear")
-        session.forms["linear"] = _make_form_info("linear")
-        ctx = _mock_ctx(session)
+        session = make_populated_session()
+        session.forms["bilinear"] = make_form_info("bilinear")
+        session.forms["linear"] = make_form_info("linear")
+        ctx = make_mock_ctx(session)
 
         # Mock full dolfinx hierarchy + numpy
         mock_dolfinx = MagicMock()
@@ -2534,7 +2433,7 @@ class TestPhase22PostconditionEdgeCases:
         }), patch("dolfinx_mcp.utils.compute_l2_norm", return_value=-1.0):
             result = await solve(solver_type="direct", ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "non-negative" in result["message"]
 
     @pytest.mark.asyncio
@@ -2542,7 +2441,7 @@ class TestPhase22PostconditionEdgeCases:
         """get_solver_diagnostics() fires PostconditionError when L2 norm < 0."""
         from dolfinx_mcp.tools.solver import get_solver_diagnostics
 
-        session = _populated_session()
+        session = make_populated_session()
         # Ensure solution has function_space with dofmap
         mock_fn = MagicMock()
         mock_fn.function_space.dofmap.index_map.size_global = 100
@@ -2551,12 +2450,12 @@ class TestPhase22PostconditionEdgeCases:
             name="u_h", function=mock_fn, space_name="V",
             converged=True, iterations=5, residual_norm=1e-10, wall_time=0.5,
         )
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         with patch("dolfinx_mcp.utils.compute_l2_norm", return_value=-1.0):
             result = await get_solver_diagnostics(ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "non-negative" in result["message"]
 
     @pytest.mark.asyncio
@@ -2566,7 +2465,7 @@ class TestPhase22PostconditionEdgeCases:
 
         from dolfinx_mcp.tools.postprocess import compute_error
 
-        session = _populated_session()
+        session = make_populated_session()
         # Set up solution with function that has function_space
         mock_fn = MagicMock()
         mock_fn.function_space = MagicMock()
@@ -2574,7 +2473,7 @@ class TestPhase22PostconditionEdgeCases:
             name="u_h", function=mock_fn, space_name="V",
             converged=True, iterations=5, residual_norm=1e-10, wall_time=0.5,
         )
-        ctx = _mock_ctx(session)
+        ctx = make_mock_ctx(session)
 
         # Mock full dolfinx hierarchy + numpy + ufl
         mock_dolfinx = MagicMock()
@@ -2592,7 +2491,7 @@ class TestPhase22PostconditionEdgeCases:
         }):
             result = await compute_error(exact="x[0]", norm_type="L2", ctx=ctx)
 
-        assert result["error"] == "POSTCONDITION_VIOLATED"
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "finite" in result["message"]
 
 

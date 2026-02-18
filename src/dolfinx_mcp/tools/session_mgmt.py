@@ -7,7 +7,7 @@ from typing import Any
 
 from mcp.server.fastmcp import Context
 
-from .._app import mcp
+from .._app import get_session, mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
@@ -16,13 +16,9 @@ from ..errors import (
     PreconditionError,
     handle_tool_errors,
 )
-from ..session import SessionState
+from ._validators import require_nonempty
 
 logger = logging.getLogger(__name__)
-
-
-def _get_session(ctx: Context) -> SessionState:
-    return ctx.request_context.lifespan_context
 
 
 @mcp.tool()
@@ -40,7 +36,7 @@ async def get_session_state(
         forms (dict), solutions (dict), mesh_tags (dict), entity_maps (dict),
         and ufl_symbols (list of registered symbol names).
     """
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if __debug__:
         session.check_invariants()
@@ -60,7 +56,7 @@ async def reset_session(
     Returns:
         dict with status ("reset") and message (confirmation string).
     """
-    session = _get_session(ctx)
+    session = get_session(ctx)
     session.cleanup()
 
     if __debug__:
@@ -97,13 +93,12 @@ async def run_custom_code(
     Returns:
         dict with "output" (captured text) and "error" (if any)
     """
-    if not code or not code.strip():
-        raise PreconditionError("Code string must be non-empty.")
+    require_nonempty(code, "Code string")
 
     import io
     from contextlib import redirect_stderr, redirect_stdout
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Lazy import scientific modules
     try:
@@ -187,7 +182,7 @@ async def assemble(
 
     from ..ufl_context import build_namespace, safe_evaluate
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Build UFL namespace from session
     ufl_namespace = build_namespace(session)
@@ -315,15 +310,14 @@ async def remove_object(
         dict with removed object name, type, and cascade information.
     """
     # Preconditions: validate before any imports or session access
-    if not name or not name.strip():
-        raise PreconditionError("name must be non-empty.")
+    require_nonempty(name, "name")
     if object_type not in _VALID_OBJECT_TYPES:
         raise PreconditionError(
             f"object_type must be one of {sorted(_VALID_OBJECT_TYPES)}, "
             f"got '{object_type}'."
         )
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     removed = {"name": name, "object_type": object_type}
 
@@ -340,7 +334,15 @@ async def remove_object(
                     suggestion="Check available spaces with get_session_state.",
                 )
             session._remove_space_dependents(name)
+            session._space_id_to_name.pop(id(session.function_spaces[name].space), None)
             del session.function_spaces[name]
+            # INV-9: clear forms referencing deleted space as trial space
+            stale_forms = [
+                fname for fname, finfo in session.forms.items()
+                if finfo.trial_space_name == name
+            ]
+            for fname in stale_forms:
+                del session.forms[fname]
             # INV-8: forms require at least one function_space
             if not session.function_spaces:
                 session.forms.clear()
@@ -435,8 +437,7 @@ async def read_workspace_file(
     from pathlib import Path
 
     # PRE-1: file_path non-empty
-    if not file_path or not file_path.strip():
-        raise PreconditionError("file_path must be a non-empty string.")
+    require_nonempty(file_path, "file_path")
 
     # PRE-2: encoding is valid
     valid_encodings = ("auto", "base64", "text")
@@ -530,7 +531,7 @@ async def read_workspace_file(
                 f"Base64 decoded size ({len(decoded)}) does not match file size ({file_size})."
             )
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
     if __debug__:
         session.check_invariants()
 

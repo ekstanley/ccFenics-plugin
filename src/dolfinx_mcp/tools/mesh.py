@@ -7,7 +7,7 @@ from typing import Any
 
 from mcp.server.fastmcp import Context
 
-from .._app import mcp
+from .._app import get_session, mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
@@ -17,13 +17,45 @@ from ..errors import (
     handle_tool_errors,
 )
 from ..eval_helpers import make_boundary_marker
-from ..session import EntityMapInfo, MeshInfo, MeshTagsInfo, SessionState
+from ..session import EntityMapInfo, MeshInfo, MeshTagsInfo
+from ._validators import require_nonempty, require_positive
 
 logger = logging.getLogger(__name__)
 
 
-def _get_session(ctx: Context) -> SessionState:
-    return ctx.request_context.lifespan_context
+def _get_cell_type(cell_type_str: str) -> Any:
+    """Resolve cell type string to dolfinx.mesh.CellType."""
+    from dolfinx.mesh import CellType
+
+    _CELL_TYPE_MAP = {
+        "triangle": CellType.triangle,
+        "quadrilateral": CellType.quadrilateral,
+        "tetrahedron": CellType.tetrahedron,
+        "hexahedron": CellType.hexahedron,
+    }
+    ct = _CELL_TYPE_MAP.get(cell_type_str)
+    if ct is None:
+        raise PreconditionError(
+            f"Unknown cell_type '{cell_type_str}'. "
+            f"Valid: {sorted(_CELL_TYPE_MAP.keys())}"
+        )
+    return ct
+
+
+def _build_mesh_info(name: str, mesh: Any, cell_type_str: str) -> MeshInfo:
+    """Build MeshInfo from mesh, creating connectivity first."""
+    topology = mesh.topology
+    tdim = topology.dim
+    topology.create_connectivity(tdim, 0)
+    return MeshInfo(
+        name=name,
+        mesh=mesh,
+        gdim=mesh.geometry.dim,
+        tdim=tdim,
+        cell_type=cell_type_str,
+        num_cells=topology.index_map(tdim).size_local,
+        num_vertices=topology.index_map(0).size_local,
+    )
 
 
 @mcp.tool()
@@ -48,12 +80,9 @@ async def create_unit_square(
         and active (bool, always True for newly created mesh).
     """
     # Preconditions
-    if not name:
-        raise PreconditionError("Mesh name must be non-empty.")
-    if nx <= 0:
-        raise PreconditionError(f"nx must be > 0, got {nx}.")
-    if ny <= 0:
-        raise PreconditionError(f"ny must be > 0, got {ny}.")
+    require_nonempty(name, "Mesh name")
+    require_positive(nx, "nx")
+    require_positive(ny, "ny")
     _VALID_CELL_TYPES_2D = {"triangle", "quadrilateral"}
     if cell_type not in _VALID_CELL_TYPES_2D:
         raise PreconditionError(
@@ -63,7 +92,7 @@ async def create_unit_square(
     import dolfinx.mesh
     from mpi4py import MPI
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if name in session.meshes:
         raise DuplicateNameError(
@@ -71,32 +100,16 @@ async def create_unit_square(
             suggestion=f"Use a different name or remove '{name}' first.",
         )
 
-    cell_types = {
-        "triangle": dolfinx.mesh.CellType.triangle,
-        "quadrilateral": dolfinx.mesh.CellType.quadrilateral,
-    }
-
     try:
         mesh = dolfinx.mesh.create_unit_square(
-            MPI.COMM_WORLD, nx, ny, cell_types[cell_type]
+            MPI.COMM_WORLD, nx, ny, _get_cell_type(cell_type)
         )
     except DOLFINxMCPError:
         raise
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to create mesh: {exc}") from exc
 
-    topology = mesh.topology
-    topology.create_connectivity(topology.dim, 0)
-
-    info = MeshInfo(
-        name=name,
-        mesh=mesh,
-        cell_type=cell_type,
-        num_cells=topology.index_map(topology.dim).size_local,
-        num_vertices=topology.index_map(0).size_local,
-        gdim=mesh.geometry.dim,
-        tdim=topology.dim,
-    )
+    info = _build_mesh_info(name, mesh, cell_type)
 
     # Postcondition: mesh must have cells and vertices
     if info.num_cells <= 0 or info.num_vertices <= 0:
@@ -134,7 +147,7 @@ async def get_mesh_info(
     """
     import numpy as np
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
     info = session.get_mesh(name)
     mesh = info.mesh
 
@@ -143,12 +156,13 @@ async def get_mesh_info(
     bbox_min = coords.min(axis=0).tolist()
     bbox_max = coords.max(axis=0).tolist()
 
-    # Postcondition: bounding box coordinates must be finite
-    if not np.isfinite(coords).all():
-        raise PostconditionError(
-            "Bounding box contains NaN/Inf values.",
-            suggestion="Check mesh geometry for degenerate elements.",
-        )
+    # Postcondition: bounding box coordinates must be finite (debug-only, O(n_vertices))
+    if __debug__:
+        if not np.isfinite(coords).all():
+            raise PostconditionError(
+                "Bounding box contains NaN/Inf values.",
+                suggestion="Check mesh geometry for degenerate elements.",
+            )
 
     if __debug__:
         session.check_invariants()
@@ -201,19 +215,16 @@ async def create_mesh(
         raise PreconditionError(
             f"Invalid shape '{shape}'. Must be one of {sorted(_VALID_SHAPES)}."
         )
-    if not name:
-        raise PreconditionError("Mesh name must be non-empty.")
-    if nx <= 0:
-        raise PreconditionError(f"nx must be > 0, got {nx}.")
-    if ny <= 0:
-        raise PreconditionError(f"ny must be > 0, got {ny}.")
+    require_nonempty(name, "Mesh name")
+    require_positive(nx, "nx")
+    require_positive(ny, "ny")
     if shape in ("unit_cube", "box") and nz <= 0:
         raise PreconditionError(f"nz must be > 0 for 3D shapes, got {nz}.")
 
     import dolfinx.mesh
     from mpi4py import MPI
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if name in session.meshes:
         raise DuplicateNameError(
@@ -221,33 +232,28 @@ async def create_mesh(
             suggestion=f"Use a different name or remove '{name}' first.",
         )
 
+    _2D_TYPES = {"triangle", "quadrilateral"}
+    _3D_TYPES = {"tetrahedron", "hexahedron"}
+
     try:
         if shape == "unit_square":
-            cell_types = {
-                "triangle": dolfinx.mesh.CellType.triangle,
-                "quadrilateral": dolfinx.mesh.CellType.quadrilateral,
-            }
-            if cell_type not in cell_types:
+            if cell_type not in _2D_TYPES:
                 raise DOLFINxAPIError(
                     f"Unsupported cell type '{cell_type}' for unit_square.",
-                    suggestion=f"Use one of: {list(cell_types.keys())}",
+                    suggestion=f"Use one of: {sorted(_2D_TYPES)}",
                 )
             mesh = dolfinx.mesh.create_unit_square(
-                MPI.COMM_WORLD, nx, ny, cell_types[cell_type]
+                MPI.COMM_WORLD, nx, ny, _get_cell_type(cell_type)
             )
 
         elif shape == "unit_cube":
-            cell_types = {
-                "tetrahedron": dolfinx.mesh.CellType.tetrahedron,
-                "hexahedron": dolfinx.mesh.CellType.hexahedron,
-            }
-            if cell_type not in cell_types:
+            if cell_type not in _3D_TYPES:
                 raise DOLFINxAPIError(
                     f"Unsupported cell type '{cell_type}' for unit_cube.",
-                    suggestion=f"Use one of: {list(cell_types.keys())}",
+                    suggestion=f"Use one of: {sorted(_3D_TYPES)}",
                 )
             mesh = dolfinx.mesh.create_unit_cube(
-                MPI.COMM_WORLD, nx, ny, nz, cell_types[cell_type]
+                MPI.COMM_WORLD, nx, ny, nz, _get_cell_type(cell_type)
             )
 
         elif shape == "rectangle":
@@ -263,17 +269,14 @@ async def create_mesh(
                     "Rectangle dimensions must include 'width' and 'height'.",
                     suggestion="Example: dimensions={'width': 2.0, 'height': 1.0}",
                 )
-            cell_types = {
-                "triangle": dolfinx.mesh.CellType.triangle,
-                "quadrilateral": dolfinx.mesh.CellType.quadrilateral,
-            }
-            if cell_type not in cell_types:
+            if cell_type not in _2D_TYPES:
                 raise DOLFINxAPIError(
                     f"Unsupported cell type '{cell_type}' for rectangle.",
-                    suggestion=f"Use one of: {list(cell_types.keys())}",
+                    suggestion=f"Use one of: {sorted(_2D_TYPES)}",
                 )
             mesh = dolfinx.mesh.create_rectangle(
-                MPI.COMM_WORLD, [[0, 0], [width, height]], [nx, ny], cell_types[cell_type]
+                MPI.COMM_WORLD, [[0, 0], [width, height]], [nx, ny],
+                _get_cell_type(cell_type),
             )
 
         elif shape == "box":
@@ -290,20 +293,16 @@ async def create_mesh(
                     "Box dimensions must include 'x', 'y', and 'z'.",
                     suggestion="Example: dimensions={'x': 2.0, 'y': 1.0, 'z': 1.0}",
                 )
-            cell_types = {
-                "tetrahedron": dolfinx.mesh.CellType.tetrahedron,
-                "hexahedron": dolfinx.mesh.CellType.hexahedron,
-            }
-            if cell_type not in cell_types:
+            if cell_type not in _3D_TYPES:
                 raise DOLFINxAPIError(
                     f"Unsupported cell type '{cell_type}' for box.",
-                    suggestion=f"Use one of: {list(cell_types.keys())}",
+                    suggestion=f"Use one of: {sorted(_3D_TYPES)}",
                 )
             mesh = dolfinx.mesh.create_box(
                 MPI.COMM_WORLD,
                 [[0, 0, 0], [x_dim, y_dim, z_dim]],
                 [nx, ny, nz],
-                cell_types[cell_type],
+                _get_cell_type(cell_type),
             )
 
     except DOLFINxMCPError:
@@ -311,18 +310,7 @@ async def create_mesh(
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to create mesh: {exc}") from exc
 
-    topology = mesh.topology
-    topology.create_connectivity(topology.dim, 0)
-
-    info = MeshInfo(
-        name=name,
-        mesh=mesh,
-        cell_type=cell_type,
-        num_cells=topology.index_map(topology.dim).size_local,
-        num_vertices=topology.index_map(0).size_local,
-        gdim=mesh.geometry.dim,
-        tdim=topology.dim,
-    )
+    info = _build_mesh_info(name, mesh, cell_type)
 
     # Postcondition: mesh must have cells and vertices
     if info.num_cells <= 0 or info.num_vertices <= 0:
@@ -389,7 +377,7 @@ async def mark_boundaries(
     import dolfinx.mesh
     import numpy as np
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if name in session.mesh_tags:
         raise DuplicateNameError(
@@ -457,11 +445,11 @@ async def mark_boundaries(
 
     # Store in session (after postcondition verified)
     session.mesh_tags[name] = tags_info
+    session._boundary_tag_cache[mesh_info.name] = name
 
-    # Count tags
-    tag_counts = {}
-    for tag in np.unique(tag_values):
-        tag_counts[int(tag)] = int(np.sum(tag_values == tag))
+    # Count tags (O(n) via return_counts instead of O(k*n) loop)
+    unique_tags_arr, counts_arr = np.unique(tag_values, return_counts=True)
+    tag_counts = {int(t): int(c) for t, c in zip(unique_tags_arr, counts_arr)}
 
     if __debug__:
         session.check_invariants()
@@ -496,7 +484,7 @@ async def refine_mesh(
     """
     import dolfinx.mesh
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     mesh_info = session.get_mesh(name)
     refined_name = new_name or f"{mesh_info.name}_refined"
@@ -517,18 +505,7 @@ async def refine_mesh(
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to refine mesh: {exc}") from exc
 
-    topology = refined_mesh.topology
-    topology.create_connectivity(topology.dim, 0)
-
-    refined_info = MeshInfo(
-        name=refined_name,
-        mesh=refined_mesh,
-        cell_type=mesh_info.cell_type,
-        num_cells=topology.index_map(topology.dim).size_local,
-        num_vertices=topology.index_map(0).size_local,
-        gdim=refined_mesh.geometry.dim,
-        tdim=topology.dim,
-    )
+    refined_info = _build_mesh_info(refined_name, refined_mesh, mesh_info.cell_type)
 
     session.meshes[refined_name] = refined_info
     session.active_mesh = refined_name
@@ -576,15 +553,13 @@ async def create_custom_mesh(
         facet_tags (names of auto-created MeshTags if present in the file).
     """
     # Preconditions
-    if not name:
-        raise PreconditionError("Mesh name must be non-empty.")
-    if not filename:
-        raise PreconditionError("filename must be non-empty.")
+    require_nonempty(name, "Mesh name")
+    require_nonempty(filename, "filename")
 
     import dolfinx.mesh
     from mpi4py import MPI
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if name in session.meshes:
         raise DuplicateNameError(
@@ -619,10 +594,7 @@ async def create_custom_mesh(
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to import mesh from '{filename}': {exc}") from exc
 
-    topology = mesh.topology
-    topology.create_connectivity(topology.dim, 0)
-
-    # Determine cell type
+    # Determine cell type (reverse mapping from CellType enum)
     cell_type_map = {
         dolfinx.mesh.CellType.triangle: "triangle",
         dolfinx.mesh.CellType.quadrilateral: "quadrilateral",
@@ -631,15 +603,7 @@ async def create_custom_mesh(
     }
     cell_type = cell_type_map.get(mesh.topology.cell_type, "unknown")
 
-    info = MeshInfo(
-        name=name,
-        mesh=mesh,
-        cell_type=cell_type,
-        num_cells=topology.index_map(topology.dim).size_local,
-        num_vertices=topology.index_map(0).size_local,
-        gdim=mesh.geometry.dim,
-        tdim=topology.dim,
-    )
+    info = _build_mesh_info(name, mesh, cell_type)
 
     # Postcondition: mesh must have cells and vertices
     if info.num_cells <= 0 or info.num_vertices <= 0:
@@ -664,7 +628,7 @@ async def create_custom_mesh(
             name=cell_tags_name,
             tags=cell_tags,
             mesh_name=name,
-            dimension=topology.dim,
+            dimension=info.tdim,
             unique_tags=[int(t) for t in unique_cell_tags],
         )
         result["cell_tags"] = cell_tags_name
@@ -677,7 +641,7 @@ async def create_custom_mesh(
             name=facet_tags_name,
             tags=facet_tags,
             mesh_name=name,
-            dimension=topology.dim - 1,
+            dimension=info.tdim - 1,
             unique_tags=[int(t) for t in unique_facet_tags],
         )
         result["facet_tags"] = facet_tags_name
@@ -713,8 +677,7 @@ async def create_submesh(
         num_extracted_entities (int).
     """
     # Preconditions
-    if not name:
-        raise PreconditionError("Submesh name must be non-empty.")
+    require_nonempty(name, "Submesh name")
     if not tag_values:
         raise PreconditionError("tag_values must be non-empty.")
     if not all(isinstance(v, int) for v in tag_values):
@@ -723,7 +686,7 @@ async def create_submesh(
     import dolfinx.mesh
     import numpy as np
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if name in session.meshes:
         raise DuplicateNameError(
@@ -760,18 +723,7 @@ async def create_submesh(
     except Exception as exc:
         raise DOLFINxAPIError(f"Failed to create submesh: {exc}") from exc
 
-    topology = submesh.topology
-    topology.create_connectivity(topology.dim, 0)
-
-    submesh_info = MeshInfo(
-        name=name,
-        mesh=submesh,
-        cell_type=mesh_info.cell_type,
-        num_cells=topology.index_map(topology.dim).size_local,
-        num_vertices=topology.index_map(0).size_local,
-        gdim=submesh.geometry.dim,
-        tdim=topology.dim,
-    )
+    submesh_info = _build_mesh_info(name, submesh, mesh_info.cell_type)
 
     # Postcondition: submesh cannot have more cells than parent
     if submesh_info.num_cells > mesh_info.num_cells:
@@ -842,7 +794,7 @@ async def manage_mesh_tags(
             f"action must be 'create' or 'query', got '{action}'."
         )
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if action == "create":
         if name in session.mesh_tags:
@@ -927,10 +879,9 @@ async def manage_mesh_tags(
         # Store in session (after postcondition verified)
         session.mesh_tags[name] = tags_info
 
-        # Count tags
-        tag_counts = {}
-        for tag in unique_tags:
-            tag_counts[int(tag)] = int(np.sum(tag_values == tag))
+        # Count tags (O(n) via return_counts instead of O(k*n) loop)
+        unique_tags_arr, counts_arr = np.unique(tag_values, return_counts=True)
+        tag_counts = {int(t): int(c) for t, c in zip(unique_tags_arr, counts_arr)}
 
         if __debug__:
             session.check_invariants()
@@ -988,7 +939,7 @@ async def compute_mesh_quality(
     """
     import numpy as np
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
     mesh_info = session.get_mesh(mesh_name)
     msh = mesh_info.mesh
 
@@ -1046,19 +997,18 @@ async def compute_mesh_quality(
             suggestion="Check mesh integrity and topology.",
         ) from exc
 
-    # Postcondition: all metrics must be finite
-    if not np.isfinite(cell_volumes).all():
-        raise PostconditionError(
-            "Mesh quality metrics contain NaN/Inf.",
-            suggestion="Check mesh geometry for degenerate cells.",
-        )
-
-    # Postcondition: all cell volumes must be > 0
-    if not (cell_volumes > 0).all():
-        raise PostconditionError(
-            "Some cell volumes are non-positive, indicating degenerate cells.",
-            suggestion="Check mesh for inverted or zero-area elements.",
-        )
+    # Postconditions: mesh quality metrics (debug-only, O(n_cells) scans)
+    if __debug__:
+        if not np.isfinite(cell_volumes).all():
+            raise PostconditionError(
+                "Mesh quality metrics contain NaN/Inf.",
+                suggestion="Check mesh geometry for degenerate cells.",
+            )
+        if not (cell_volumes > 0).all():
+            raise PostconditionError(
+                "Some cell volumes are non-positive, indicating degenerate cells.",
+                suggestion="Check mesh for inverted or zero-area elements.",
+            )
 
     min_vol = float(np.min(cell_volumes))
     max_vol = float(np.max(cell_volumes))

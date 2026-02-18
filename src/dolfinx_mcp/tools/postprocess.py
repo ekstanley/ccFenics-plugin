@@ -16,7 +16,7 @@ from typing import Any
 
 from mcp.server.fastmcp import Context
 
-from .._app import mcp
+from .._app import get_session, mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
@@ -27,13 +27,52 @@ from ..errors import (
     handle_tool_errors,
 )
 from ..eval_helpers import eval_numpy_expression
-from ..session import SessionState
+from ._validators import require_nonempty, require_positive
 
 logger = logging.getLogger(__name__)
 
 
-def _get_session(ctx: Context) -> SessionState:
-    return ctx.request_context.lifespan_context
+def _prepare_point_eval(mesh: Any, points_list: list) -> tuple:
+    """Validate points, pad to 3D, build BB tree, find colliding cells.
+
+    Returns:
+        (points_array, colliding_cells) where points_array has shape (3, N).
+    """
+    import numpy as np
+
+    import dolfinx.geometry
+
+    points_array = np.array(points_list, dtype=np.float64)
+    if not np.isfinite(points_array).all():
+        raise PreconditionError("All point coordinates must be finite (no NaN/Inf).")
+    if points_array.shape[1] == 2:
+        points_array = np.column_stack([points_array, np.zeros(len(points_array))])
+    elif points_array.shape[1] != 3:
+        raise DOLFINxAPIError(
+            f"Points must be 2D or 3D, got shape {points_array.shape}",
+            suggestion="Provide points as [[x1, y1], [x2, y2], ...] or [[x1, y1, z1], ...]",
+        )
+    points_array = points_array.T
+    tree = dolfinx.geometry.bb_tree(mesh, mesh.topology.dim)
+    candidates = dolfinx.geometry.compute_collisions_points(tree, points_array.T)
+    colliding_cells = dolfinx.geometry.compute_colliding_cells(
+        mesh, candidates, points_array.T,
+    )
+    return points_array, colliding_cells
+
+
+def _extract_mixed_subspace(uh: Any, V: Any, sub_index: int) -> tuple:
+    """Extract sub-function from mixed space.
+
+    Returns:
+        (uh_sub, V_sub) -- the collapsed sub-function and sub-space.
+    """
+    import dolfinx.fem
+
+    V_sub, sub_map = V.sub(sub_index).collapse()
+    uh_sub = dolfinx.fem.Function(V_sub)
+    uh_sub.x.array[:] = uh.x.array[sub_map]
+    return uh_sub, V_sub
 
 
 @contextlib.contextmanager
@@ -108,8 +147,7 @@ async def compute_error(
         function_name (str, the computed solution used).
     """
     # Preconditions
-    if not exact or not exact.strip():
-        raise PreconditionError("exact expression must be non-empty.")
+    require_nonempty(exact, "exact expression")
     if norm_type.upper() not in ("L2", "H1"):
         raise PreconditionError(
             f"norm_type must be 'L2' or 'H1', got '{norm_type}'."
@@ -119,7 +157,7 @@ async def compute_error(
     import numpy as np
     import ufl
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Find the computed solution
     if function_name is not None:
@@ -208,7 +246,7 @@ async def export_solution(
     import dolfinx.io
     from mpi4py import MPI
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Resolve functions to export
     if functions is not None:
@@ -303,10 +341,9 @@ async def evaluate_solution(
     if not points:
         raise PreconditionError("points list must be non-empty.")
 
-    import dolfinx.geometry
     import numpy as np
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Find the function to evaluate
     if function_name is not None:
@@ -315,30 +352,7 @@ async def evaluate_solution(
         uh = session.get_last_solution().function
 
     mesh = uh.function_space.mesh
-
-    # Convert points to numpy array and pad to 3D if needed
-    points_array = np.array(points, dtype=np.float64)
-
-    # Validate all points are finite
-    if not np.isfinite(points_array).all():
-        raise PreconditionError("All point coordinates must be finite (no NaN/Inf).")
-
-    if points_array.shape[1] == 2:
-        # Pad with zeros for z-coordinate
-        points_array = np.column_stack([points_array, np.zeros(len(points_array))])
-    elif points_array.shape[1] != 3:
-        raise DOLFINxAPIError(
-            f"Points must be 2D or 3D, got shape {points_array.shape}",
-            suggestion="Provide points as [[x1, y1], [x2, y2], ...] or [[x1, y1, z1], ...]",
-        )
-
-    # Transpose to shape (3, N) as required by DOLFINx
-    points_array = points_array.T
-
-    # Build bounding box tree and find colliding cells
-    tree = dolfinx.geometry.bb_tree(mesh, mesh.topology.dim)
-    candidates = dolfinx.geometry.compute_collisions_points(tree, points_array.T)
-    colliding_cells = dolfinx.geometry.compute_colliding_cells(mesh, candidates, points_array.T)
+    points_array, colliding_cells = _prepare_point_eval(mesh, points)
 
     # Evaluate at each point
     results = []
@@ -403,7 +417,7 @@ async def compute_functionals(
 
     from ..ufl_context import build_namespace, safe_evaluate
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     if not session.solutions and not session.functions:
         raise DOLFINxAPIError(
@@ -477,13 +491,11 @@ async def query_point_values(
     # Preconditions
     if not points:
         raise PreconditionError("points list must be non-empty.")
-    if tolerance <= 0:
-        raise PreconditionError(f"tolerance must be > 0, got {tolerance}.")
+    require_positive(tolerance, "tolerance")
 
-    import dolfinx.geometry
     import numpy as np
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Find the function to evaluate
     if function_name is not None:
@@ -492,30 +504,7 @@ async def query_point_values(
         uh = session.get_last_solution().function
 
     mesh = uh.function_space.mesh
-
-    # Convert points to numpy array and pad to 3D if needed
-    points_array = np.array(points, dtype=np.float64)
-
-    # Validate all points are finite
-    if not np.isfinite(points_array).all():
-        raise PreconditionError("All point coordinates must be finite (no NaN/Inf).")
-
-    if points_array.shape[1] == 2:
-        # Pad with zeros for z-coordinate
-        points_array = np.column_stack([points_array, np.zeros(len(points_array))])
-    elif points_array.shape[1] != 3:
-        raise DOLFINxAPIError(
-            f"Points must be 2D or 3D, got shape {points_array.shape}",
-            suggestion="Provide points as [[x1, y1], [x2, y2], ...] or [[x1, y1, z1], ...]",
-        )
-
-    # Transpose to shape (3, N) as required by DOLFINx
-    points_array = points_array.T
-
-    # Build bounding box tree and find colliding cells
-    tree = dolfinx.geometry.bb_tree(mesh, mesh.topology.dim)
-    candidates = dolfinx.geometry.compute_collisions_points(tree, points_array.T)
-    colliding_cells = dolfinx.geometry.compute_colliding_cells(mesh, candidates, points_array.T)
+    points_array, colliding_cells = _prepare_point_eval(mesh, points)
 
     # Evaluate at each point with cell information
     results = []
@@ -602,15 +591,22 @@ async def plot_solution(
     # Validate output path within /workspace (early, before session/imports)
     output_path = _validate_output_path(output_file or "plot.png")
 
-    session = _get_session(ctx)
+    session = get_session(ctx)
 
     # Find the function to plot
+    mixed_info = None
     if function_name is not None:
-        uh = session.get_function(function_name).function
+        func_info = session.get_function(function_name)
     else:
-        uh = session.get_last_solution().function
-
+        func_info = session.get_last_solution()
+    uh = func_info.function
     V = uh.function_space
+
+    # Detect mixed space via session registry (not DOLFINx API, to avoid mock issues)
+    is_mixed = (
+        func_info.space_name in session.function_spaces
+        and session.function_spaces[func_info.space_name].element_family == "Mixed"
+    )
 
     # Try to import pyvista
     try:
@@ -622,6 +618,21 @@ async def plot_solution(
             "PyVista is not available for plotting.",
             suggestion="Install pyvista in the container or use export_solution + external tools.",
         ) from exc
+
+    # Handle mixed function spaces: extract sub-function for plotting
+    # vtk_mesh() only supports CG/DG Lagrange, not mixed spaces
+    if is_mixed:
+        n_sub = V.num_sub_spaces
+        sub_idx = component if component is not None else 0
+        if sub_idx >= n_sub:
+            raise PreconditionError(
+                f"component={sub_idx} out of range for mixed space with {n_sub} sub-spaces.",
+                suggestion=f"Valid sub-space indices: 0 to {n_sub - 1}.",
+            )
+        uh, V = _extract_mixed_subspace(uh, V, sub_idx)
+        component = None  # Already extracted, don't re-index
+        mixed_info = f"Extracted sub-space {sub_idx} from mixed space for plotting."
+        logger.info(mixed_info)
 
     # Detect vector vs scalar field
     # DOLFINx 0.10+: _BasixElement uses reference_value_shape, not value_shape
@@ -662,8 +673,12 @@ async def plot_solution(
                 plot_data = uh.x.array.real
                 component_plotted = None
 
-            # POST-V3: scalar data shape check
-            assert plot_data.ndim == 1, f"Expected 1D plot data, got shape {plot_data.shape}"
+            # POST-V3: scalar data shape check (always-on, not debug-only)
+            if plot_data.ndim != 1:
+                raise PostconditionError(
+                    f"Expected 1D plot data, got shape {plot_data.shape}.",
+                    suggestion="Internal error in plot data extraction. Report as bug.",
+                )
 
             grid.point_data["solution"] = plot_data
 
@@ -703,6 +718,9 @@ async def plot_solution(
             "file_size_bytes": file_size,
             "is_vector": is_vector,
         }
+
+        if mixed_info is not None:
+            result["mixed_space_info"] = mixed_info
 
         if is_vector:
             result["component_plotted"] = component_plotted

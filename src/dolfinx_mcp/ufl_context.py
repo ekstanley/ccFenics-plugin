@@ -63,26 +63,22 @@ def _check_forbidden(expr_str: str) -> None:
         )
 
 
-def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict[str, Any]:
-    """Build a restricted namespace for UFL expression evaluation.
 
-    Includes:
-    - UFL operators (grad, div, inner, dot, dx, ds, dS, etc.)
-    - numpy/math constants (pi, e, sin, cos, exp, sqrt, abs, ln)
-    - Spatial coordinate x, facet normal n, cell diameter h
-    - All session-registered functions, spaces, and UFL symbols
+# Module-level cache for static UFL namespace entries (lazy-initialized).
+_STATIC_UFL_NS: dict[str, Any] | None = None
+
+
+def _build_static_ns() -> dict[str, Any]:
+    """Build the static UFL namespace once (lazy, on first call).
+
+    Contains all UFL operators, math functions, constructors, and constants
+    that never change between calls. Only mesh-specific geometry and session
+    data are added per call in build_namespace().
     """
-    import numpy as np
     import ufl
+    import numpy as np
 
-    mesh_info = session.get_mesh(mesh_name)
-    mesh = mesh_info.mesh
-
-    # Spatial coordinates
-    x = ufl.SpatialCoordinate(mesh)
-
-    ns: dict[str, Any] = {
-        # Block builtins
+    return {
         "__builtins__": {},
         # UFL differential operators
         "grad": ufl.grad,
@@ -134,40 +130,8 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
         "Min": ufl.min_value,
         "max_value": ufl.max_value,
         "min_value": ufl.min_value,
-        # UFL measures -- attach subdomain_data if boundary/interior tags exist
+        # UFL measures (base, without subdomain_data)
         "dx": ufl.dx,
-    }
-
-    # Look up facet tags for this mesh to enable ds(tag) and dS(tag)
-    mesh_name_resolved = mesh_name or session.active_mesh
-    boundary_tags = None
-    interior_tags = None
-    fdim = mesh.topology.dim - 1
-    for _tag_name, tag_info in session.mesh_tags.items():
-        if tag_info.mesh_name == mesh_name_resolved and tag_info.dimension == fdim:
-            boundary_tags = tag_info.tags
-            break
-    # Interior facets (dimension == tdim - 1, but separate from boundary)
-    for _tag_name, tag_info in session.mesh_tags.items():
-        if (
-            tag_info.mesh_name == mesh_name_resolved
-            and tag_info.dimension == fdim
-            and tag_info.name.startswith("interior_")
-        ):
-            interior_tags = tag_info.tags
-            break
-
-    if boundary_tags is not None:
-        ns["ds"] = ufl.Measure("ds", domain=mesh, subdomain_data=boundary_tags)
-    else:
-        ns["ds"] = ufl.ds
-
-    if interior_tags is not None:
-        ns["dS"] = ufl.Measure("dS", domain=mesh, subdomain_data=interior_tags)
-    else:
-        ns["dS"] = ufl.dS
-
-    ns.update({
         # UFL special forms
         "Dx": ufl.Dx,
         "variable": ufl.variable,
@@ -179,18 +143,86 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
         "TestFunction": ufl.TestFunction,
         "TrialFunctions": ufl.TrialFunctions,
         "TestFunctions": ufl.TestFunctions,
-        # Spatial coordinate and geometry
-        "x": x,
+        # UFL geometry constructors (unbound -- need mesh argument when called)
         "SpatialCoordinate": ufl.SpatialCoordinate,
         "FacetNormal": ufl.FacetNormal,
         "CellDiameter": ufl.CellDiameter,
-        "n": ufl.FacetNormal(mesh),
-        "h": ufl.CellDiameter(mesh),
         # Constants
         "pi": math.pi,
         "e": math.e,
         "np": np,
-    })
+    }
+
+
+def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict[str, Any]:
+    """Build a restricted namespace for UFL expression evaluation.
+
+    Includes:
+    - UFL operators (grad, div, inner, dot, dx, ds, dS, etc.)
+    - numpy/math constants (pi, e, sin, cos, exp, sqrt, abs, ln)
+    - Spatial coordinate x, facet normal n, cell diameter h
+    - All session-registered functions, spaces, and UFL symbols
+    """
+    import ufl
+
+    global _STATIC_UFL_NS
+    if _STATIC_UFL_NS is None:
+        _STATIC_UFL_NS = _build_static_ns()
+
+    mesh_info = session.get_mesh(mesh_name)
+    mesh = mesh_info.mesh
+
+    # Start from cached static namespace (operators, math, constructors)
+    ns = _STATIC_UFL_NS.copy()
+
+    # Mesh-specific geometry
+    ns["x"] = ufl.SpatialCoordinate(mesh)
+    ns["n"] = ufl.FacetNormal(mesh)
+    ns["h"] = ufl.CellDiameter(mesh)
+
+    # Look up facet tags for this mesh to enable ds(tag) and dS(tag)
+    mesh_name_resolved = mesh_name or session.active_mesh
+    boundary_tags = None
+    interior_tags = None
+    fdim = mesh.topology.dim - 1
+
+    # O(1) cache lookup for boundary tags
+    cached_bt = session._boundary_tag_cache.get(mesh_name_resolved)
+    if cached_bt and cached_bt in session.mesh_tags:
+        bt_info = session.mesh_tags[cached_bt]
+        if bt_info.dimension == fdim:
+            boundary_tags = bt_info.tags
+
+    # O(1) cache lookup for interior tags
+    cached_it = session._interior_tag_cache.get(mesh_name_resolved)
+    if cached_it and cached_it in session.mesh_tags:
+        it_info = session.mesh_tags[cached_it]
+        if it_info.dimension == fdim:
+            interior_tags = it_info.tags
+
+    # Fallback scan for uncached tags (e.g. from manage_mesh_tags or custom code)
+    if boundary_tags is None or interior_tags is None:
+        for _tag_name, tag_info in session.mesh_tags.items():
+            if tag_info.mesh_name == mesh_name_resolved and tag_info.dimension == fdim:
+                if tag_info.name.startswith("interior_"):
+                    if interior_tags is None:
+                        interior_tags = tag_info.tags
+                        session._interior_tag_cache[mesh_name_resolved] = tag_info.name
+                elif boundary_tags is None:
+                    boundary_tags = tag_info.tags
+                    session._boundary_tag_cache[mesh_name_resolved] = tag_info.name
+            if boundary_tags is not None and interior_tags is not None:
+                break
+
+    if boundary_tags is not None:
+        ns["ds"] = ufl.Measure("ds", domain=mesh, subdomain_data=boundary_tags)
+    else:
+        ns["ds"] = ufl.ds
+
+    if interior_tags is not None:
+        ns["dS"] = ufl.Measure("dS", domain=mesh, subdomain_data=interior_tags)
+    else:
+        ns["dS"] = ufl.dS
 
     # Inject session-registered UFL symbols (materials, coefficients)
     ns.update(session.ufl_symbols)

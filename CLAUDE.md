@@ -20,9 +20,12 @@ ruff check src/ tests/
 # Type check
 pyright src/dolfinx_mcp/
 
-# Docker build + integration tests
-docker build -t dolfinx-mcp .
-pytest tests/test_runtime_contracts.py -v
+# Docker build + integration tests (single container, all suites)
+docker build -t dolfinx-mcp:latest .
+./scripts/run-docker-tests.sh
+
+# Run specific Docker suites
+./scripts/run-docker-tests.sh runtime tutorial
 ```
 
 ## Architecture
@@ -62,7 +65,7 @@ src/dolfinx_mcp/
         problem.py       3 problem definition tools
         solver.py        5 solver tools (solve [+nullspace_mode], solve_time_dependent, get_solver_diagnostics, solve_nonlinear, solve_eigenvalue)
         postprocess.py   6 post-processing tools
-        interpolation.py 3 interpolation tools
+        interpolation.py 4 interpolation tools (create_function, interpolate, project, create_discrete_operator)
         session_mgmt.py  6 session management tools
     prompts/templates.py 6 workflow prompt templates
     resources/providers.py 6 URI resources
@@ -196,7 +199,7 @@ All run on Python 3.12, Ubuntu latest.
 
 ## Plugin Layer (Claude Code Integration)
 
-The `.claude/` directory adds FEM domain intelligence on top of the 34 MCP tools.
+The `.claude/` directory adds FEM domain intelligence on top of the 35 MCP tools.
 
 ### Skills (`.claude/skills/`)
 
