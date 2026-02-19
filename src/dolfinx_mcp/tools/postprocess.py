@@ -147,6 +147,8 @@ async def compute_error(
     """
     # Preconditions
     require_nonempty(exact, "exact expression")
+    from ..ufl_context import _check_forbidden
+    _check_forbidden(exact)
     if norm_type.upper() not in ("L2", "H1"):
         raise PreconditionError(
             f"norm_type must be 'L2' or 'H1', got '{norm_type}'."

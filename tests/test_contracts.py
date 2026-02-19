@@ -941,6 +941,17 @@ class TestPhase10Contracts:
         assert_error_type(result, "POSTCONDITION_VIOLATED")
         assert "non-finite value" in result["message"]
 
+    @pytest.mark.asyncio
+    async def test_compute_error_rejects_forbidden_expression(self):
+        """Eager _check_forbidden fires on exact expression with forbidden tokens."""
+        from dolfinx_mcp.tools.postprocess import compute_error
+
+        session = SessionState()
+        session.solutions["u_h"] = make_solution_info("u_h", "V")
+        ctx = make_mock_ctx(session)
+        result = await compute_error(exact="import os", ctx=ctx)
+        assert_error_type(result, "INVALID_UFL_EXPRESSION")
+
     def test_safe_evaluate_rejects_none_result(self):
         """Raises InvalidUFLExpressionError when expression evaluates to None."""
         from dolfinx_mcp.errors import InvalidUFLExpressionError
