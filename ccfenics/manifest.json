@@ -10,11 +10,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/estanley/ccFenics-plugin"
+    "url": "https://github.com/ekstanley/ccFenics-plugin"
   },
-  "homepage": "https://github.com/estanley/ccFenics-plugin",
-  "documentation": "https://github.com/estanley/ccFenics-plugin#readme",
-  "support": "https://github.com/estanley/ccFenics-plugin/issues",
+  "homepage": "https://github.com/ekstanley/ccFenics-plugin",
+  "documentation": "https://github.com/ekstanley/ccFenics-plugin#readme",
+  "support": "https://github.com/ekstanley/ccFenics-plugin/issues",
   "license": "MIT",
   "keywords": [
     "fem", "dolfinx", "fenics", "finite-element",

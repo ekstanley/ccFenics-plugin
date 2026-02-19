@@ -1,6 +1,6 @@
 # dolfinx-mcp
 
-[![CI](https://github.com/estanley/ccFenics-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/estanley/ccFenics-plugin/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://python.org)
+[![CI](https://github.com/ekstanley/ccFenics-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/ekstanley/ccFenics-plugin/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://python.org)
 
 MCP server for FEniCSx/DOLFINx finite element computing.
 
@@ -29,7 +29,7 @@ Docker container with the full DOLFINx/PETSc stack.
 ### 1. Build
 
 ```bash
-git clone https://github.com/estanley/ccFenics-plugin.git
+git clone https://github.com/ekstanley/ccFenics-plugin.git
 cd ccFenics-plugin
 docker build -t dolfinx-mcp .
 ```

@@ -5,7 +5,7 @@
   "author": {
     "name": "DOLFINx MCP Contributors"
   },
-  "repository": "https://github.com/estanley/ccFenics-plugin",
+  "repository": "https://github.com/ekstanley/ccFenics-plugin",
   "license": "MIT",
   "keywords": ["fem", "dolfinx", "fenics", "finite-element", "simulation", "pde", "scientific-computing"]
 }
