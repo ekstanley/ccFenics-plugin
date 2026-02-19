@@ -481,6 +481,57 @@ class SessionState:
                 )
         return result
 
+    # --- Public registration helpers ---
+
+    def register_function(
+        self,
+        name: str,
+        function: Any,
+        space_name: str,
+        description: str = "",
+    ) -> FunctionInfo:
+        """Register a function in the session with full validation.
+
+        Args:
+            name: Unique name for the function.
+            function: The dolfinx.fem.Function object.
+            space_name: Name of existing function space.
+            description: Optional description.
+
+        Returns:
+            The created FunctionInfo.
+
+        Raises:
+            InvariantError: If name is empty.
+            DuplicateNameError: If name already exists.
+            FunctionSpaceNotFoundError: If space_name not in registry.
+        """
+        from .errors import DuplicateNameError, FunctionSpaceNotFoundError
+
+        if not name or not name.strip():
+            raise InvariantError("Function name must be non-empty.")
+        if name in self.functions:
+            raise DuplicateNameError(
+                f"Function '{name}' already exists.",
+                suggestion="Choose a different name or remove the existing function first.",
+            )
+        if space_name not in self.function_spaces:
+            raise FunctionSpaceNotFoundError(
+                f"Cannot register function '{name}': space '{space_name}' not found. "
+                f"Available: {list(self.function_spaces.keys())}",
+            )
+        info = FunctionInfo(
+            name=name,
+            function=function,
+            space_name=space_name,
+            description=description,
+        )
+        self.functions[name] = info
+        if __debug__:
+            assert name in self.functions
+            assert self.functions[name].space_name == space_name
+        return info
+
     # --- Cascade deletion ---
 
     def remove_mesh(self, name: str) -> None:

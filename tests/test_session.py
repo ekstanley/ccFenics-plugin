@@ -560,3 +560,41 @@ class TestGoldenScenarios:
         assert "V2" in session.function_spaces
         assert "f2" in session.functions
         session.check_invariants()
+
+
+class TestRegisterFunction:
+    """FIX-5 (BUG-005): register_function API on SessionState."""
+
+    def test_register_function_success(self, session):
+        session.meshes["m"] = make_mesh_info("m")
+        session.function_spaces["V"] = make_space_info("V", mesh_name="m")
+
+        info = session.register_function("f", MagicMock(), "V", description="test")
+        assert "f" in session.functions
+        assert info.space_name == "V"
+        assert info.description == "test"
+
+    def test_register_function_duplicate_raises(self, session):
+        from dolfinx_mcp.errors import DuplicateNameError
+
+        session.meshes["m"] = make_mesh_info("m")
+        session.function_spaces["V"] = make_space_info("V", mesh_name="m")
+        session.register_function("f", MagicMock(), "V")
+
+        with pytest.raises(DuplicateNameError):
+            session.register_function("f", MagicMock(), "V")
+
+    def test_register_function_missing_space_raises(self, session):
+        from dolfinx_mcp.errors import FunctionSpaceNotFoundError
+
+        session.meshes["m"] = make_mesh_info("m")
+        # No function space registered
+
+        with pytest.raises(FunctionSpaceNotFoundError):
+            session.register_function("f", MagicMock(), "nonexistent")
+
+    def test_register_function_empty_name_raises(self, session):
+        from dolfinx_mcp.errors import InvariantError
+
+        with pytest.raises(InvariantError):
+            session.register_function("", MagicMock(), "V")

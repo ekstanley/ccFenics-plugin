@@ -2690,3 +2690,135 @@ class TestPlotSolutionReturnType:
         assert "file_path" in result
         assert "plot_type" in result
         assert "file_size_bytes" in result
+
+
+# ──────────────────────────────────────────────────────────────────
+# Stress-test bug fixes (FIX-1 through FIX-5)
+# ──────────────────────────────────────────────────────────────────
+
+
+class TestDG0WarpPrecondition:
+    """FIX-1 (BUG-004): Warp plots rejected for DG0 functions."""
+
+    @pytest.mark.asyncio
+    async def test_plot_warp_rejects_dg0(self, mock_ctx):
+        from dolfinx_mcp.tools.postprocess import plot_solution
+
+        session = mock_ctx.request_context.lifespan_context
+        session.meshes["m"] = make_mesh_info("m")
+        session.function_spaces["V_dg0"] = make_space_info(
+            "V_dg0", mesh_name="m", element_family="DG", element_degree=0,
+        )
+        session.functions["f"] = make_function_info("f", space_name="V_dg0")
+        session.solutions["f"] = make_solution_info("f", space_name="V_dg0")
+
+        result = await plot_solution(
+            function_name="f", plot_type="warp",
+            output_file="/workspace/test.png", ctx=mock_ctx,
+        )
+        assert_error_type(result, "PRECONDITION_VIOLATED")
+        assert "DG0" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_plot_contour_allows_dg0(self, mock_ctx):
+        """Contour plots should NOT be blocked by the DG0 guard."""
+        from dolfinx_mcp.tools.postprocess import plot_solution
+
+        session = mock_ctx.request_context.lifespan_context
+        session.meshes["m"] = make_mesh_info("m")
+        session.function_spaces["V_dg0"] = make_space_info(
+            "V_dg0", mesh_name="m", element_family="DG", element_degree=0,
+        )
+        session.functions["f"] = make_function_info("f", space_name="V_dg0")
+        session.solutions["f"] = make_solution_info("f", space_name="V_dg0")
+
+        # Should pass the DG0 precondition (will fail later at pyvista import)
+        result = await plot_solution(
+            function_name="f", plot_type="contour",
+            output_file="/workspace/test.png", ctx=mock_ctx,
+        )
+        # The error should NOT be PRECONDITION_VIOLATED about DG0
+        if "error" in result:
+            assert "DG0" not in result.get("message", "")
+
+
+class TestVectorExpressionShape:
+    """FIX-2 (BUG-003): eval_numpy_expression allows (d, N) for vectors."""
+
+    def test_vector_2d_expression(self):
+        import numpy as np
+
+        from dolfinx_mcp.eval_helpers import eval_numpy_expression
+
+        x = np.array([[0.0, 0.5, 1.0], [0.0, 0.5, 1.0]])
+        result = eval_numpy_expression("np.vstack([x[0], x[1]])", x)
+        assert result.shape == (2, 3)
+
+    def test_vector_3d_expression(self):
+        import numpy as np
+
+        from dolfinx_mcp.eval_helpers import eval_numpy_expression
+
+        x = np.array([[0.0, 1.0], [0.0, 1.0], [0.0, 1.0]])
+        result = eval_numpy_expression("np.vstack([x[0], x[1], x[2]])", x)
+        assert result.shape == (3, 2)
+
+    def test_scalar_still_works(self):
+        import numpy as np
+
+        from dolfinx_mcp.eval_helpers import eval_numpy_expression
+
+        x = np.array([[0.0, 0.5, 1.0], [0.0, 0.5, 1.0]])
+        result = eval_numpy_expression("x[0] + x[1]", x)
+        assert result.shape == (3,)
+
+    def test_bad_shape_rejected(self):
+        import numpy as np
+
+        from dolfinx_mcp.errors import PostconditionError
+        from dolfinx_mcp.eval_helpers import eval_numpy_expression
+
+        x = np.array([[0.0, 0.5, 1.0], [0.0, 0.5, 1.0]])
+        with pytest.raises(PostconditionError, match="shape"):
+            eval_numpy_expression("np.ones((3, 5))", x)
+
+
+class TestBoundaryTagPreconditions:
+    """FIX-4 (BUG-002): boundary_tag BC validation."""
+
+    @pytest.mark.asyncio
+    async def test_boundary_tag_no_tags_exist(self, mock_ctx):
+        from dolfinx_mcp.tools.problem import apply_boundary_condition
+
+        session = mock_ctx.request_context.lifespan_context
+        session.meshes["m"] = make_mesh_info("m")
+        session.function_spaces["V"] = make_space_info("V", mesh_name="m")
+        # No mesh_tags registered
+
+        result = await apply_boundary_condition(
+            value=0.0, boundary_tag=1,
+            function_space="V", ctx=mock_ctx,
+        )
+        assert_error_type(result, "PRECONDITION_VIOLATED")
+        assert "boundary tags" in result["message"].lower() or "No boundary tags" in result["message"]
+
+    @pytest.mark.asyncio
+    async def test_boundary_tag_invalid_value(self, mock_ctx):
+        from dolfinx_mcp.tools.problem import apply_boundary_condition
+
+        session = mock_ctx.request_context.lifespan_context
+        session.meshes["m"] = make_mesh_info("m")
+        session.function_spaces["V"] = make_space_info("V", mesh_name="m")
+
+        # Add mesh tags with tags 1 and 2
+        tags_info = make_mesh_tags_info("bt", mesh_name="m")
+        tags_info.unique_tags = [1, 2]
+        session.mesh_tags["bt"] = tags_info
+        session._boundary_tag_cache["m"] = "bt"
+
+        result = await apply_boundary_condition(
+            value=0.0, boundary_tag=99,
+            function_space="V", ctx=mock_ctx,
+        )
+        assert_error_type(result, "PRECONDITION_VIOLATED")
+        assert "99" in result["message"]

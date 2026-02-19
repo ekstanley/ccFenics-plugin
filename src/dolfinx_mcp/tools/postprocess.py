@@ -186,14 +186,15 @@ async def compute_error(
     # Compute error
     error_func = dolfinx.fem.Function(V)
     error_func.x.array[:] = uh.x.array - u_exact.x.array
+    dx = ufl.Measure("dx", domain=V.mesh)
 
     if norm_type.upper() == "L2":
-        error_form = dolfinx.fem.form(ufl.inner(error_func, error_func) * ufl.dx)
+        error_form = dolfinx.fem.form(ufl.inner(error_func, error_func) * dx)
         error_val = float(np.sqrt(abs(dolfinx.fem.assemble_scalar(error_form))))
     elif norm_type.upper() == "H1":
         error_form = dolfinx.fem.form(
             (ufl.inner(error_func, error_func)
-             + ufl.inner(ufl.grad(error_func), ufl.grad(error_func))) * ufl.dx
+             + ufl.inner(ufl.grad(error_func), ufl.grad(error_func))) * dx
         )
         error_val = float(np.sqrt(abs(dolfinx.fem.assemble_scalar(error_form))))
 
@@ -633,6 +634,18 @@ async def plot_solution(
         component = None  # Already extracted, don't re-index
         mixed_info = f"Extracted sub-space {sub_idx} from mixed space for plotting."
         logger.info(mixed_info)
+
+    # PRE-DG0: DG0 has cell-wise constants -- PyVista warp needs vertex data
+    if plot_type == "warp" and func_info.space_name in session.function_spaces:
+        sp = session.function_spaces[func_info.space_name]
+        if sp.element_degree == 0 and sp.element_family in (
+            "DG", "Discontinuous Lagrange",
+        ):
+            raise PreconditionError(
+                "Warp plots not supported for DG0 (piecewise constant) functions. "
+                "DG0 has cell-wise constant values with no vertex data for warping.",
+                suggestion="Use plot_type='contour' instead, or project to CG1 first.",
+            )
 
     # Detect vector vs scalar field
     # DOLFINx 0.10+: _BasixElement uses reference_value_shape, not value_shape

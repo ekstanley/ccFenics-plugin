@@ -831,12 +831,20 @@ class TestEvalHelperPostconditions:
         result = eval_numpy_expression("1.0", x)
         assert result.shape == (3,)
 
-        # Expression returning shape (2, N) -- should raise PostconditionError
+        # Expression returning shape (2, N) -- allowed for vector-valued fields
+        result = eval_numpy_expression("np.vstack([x[0], x[1]])", x)
+        assert result.shape == (2, 3)
+
+        # Expression returning shape (3, N) -- allowed for 3D vector fields
+        x3 = np.array([[0.0, 0.5, 1.0], [0.0, 0.5, 1.0], [0.0, 0.0, 0.0]])
+        result = eval_numpy_expression("np.vstack([x[0], x[1], x[2]])", x3)
+        assert result.shape == (3, 3)
+
+        # Expression returning shape (3, 5) when N=3 -- should still raise
         from dolfinx_mcp.errors import PostconditionError
 
         with pytest.raises(PostconditionError, match="shape"):
-            # np.vstack([x[0], x[1]]) returns (2, 3) which cannot broadcast to (3,)
-            eval_numpy_expression("np.vstack([x[0], x[1]])", x)
+            eval_numpy_expression("np.ones((3, 5))", x)
 
     def test_boundary_marker_non_boolean_coerced(self):
         """H2: make_boundary_marker coerces non-boolean result to bool.
@@ -1225,3 +1233,112 @@ class TestDbCAuditFixes:
         assert "_scalar_V" not in space_names2, (
             f"_scalar_V still present after parent deletion: {space_names2}"
         )
+
+
+# ──────────────────────────────────────────────────────────────────
+# Stress-test bug fixes (Docker integration tests)
+# ──────────────────────────────────────────────────────────────────
+
+
+class TestMultiMeshFixes:
+    """FIX-3 (BUG-001): bare ufl.dx with multiple meshes."""
+
+    @pytest.mark.asyncio
+    async def test_project_multi_mesh(self, ctx):
+        """Project expression with two meshes in session."""
+        from dolfinx_mcp.tools.interpolation import create_function, project
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="m1", nx=4, ny=4, ctx=ctx)
+        await create_unit_square(name="m2", nx=8, ny=8, ctx=ctx)
+        await create_function_space(
+            name="V2", mesh_name="m2", family="Lagrange", degree=1, ctx=ctx,
+        )
+        await create_function(name="target", function_space="V2", ctx=ctx)
+
+        result = await project(
+            expression="x[0]", target_space="V2", name="proj", ctx=ctx,
+        )
+        assert "error" not in result, f"Project failed: {result}"
+        assert result["l2_norm"] > 0
+
+    @pytest.mark.asyncio
+    async def test_compute_error_multi_mesh(self, ctx):
+        """Compute error with two meshes in session."""
+        from dolfinx_mcp.tools.mesh import create_unit_square
+        from dolfinx_mcp.tools.postprocess import compute_error
+        from dolfinx_mcp.tools.problem import apply_boundary_condition, define_variational_form
+        from dolfinx_mcp.tools.solver import solve
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="m1", nx=4, ny=4, ctx=ctx)
+        await create_unit_square(name="m2", nx=8, ny=8, ctx=ctx)
+        await create_function_space(
+            name="V", mesh_name="m1", family="Lagrange", degree=1, ctx=ctx,
+        )
+        await define_variational_form(
+            bilinear="inner(grad(u), grad(v)) * dx",
+            linear="1.0 * v * dx",
+            trial_space="V", ctx=ctx,
+        )
+        await apply_boundary_condition(
+            value=0.0, boundary="True", function_space="V", ctx=ctx,
+        )
+        await solve(ctx=ctx)
+
+        result = await compute_error(
+            exact="0.0", norm_type="L2", ctx=ctx,
+        )
+        assert "error" not in result or result.get("error_value") is not None
+
+
+class TestBoundaryTagBCs:
+    """FIX-4 (BUG-002): boundary_tag-based Dirichlet BCs."""
+
+    @pytest.mark.asyncio
+    async def test_boundary_tag_bc_basic(self, ctx):
+        """Mark boundaries then apply BC by tag."""
+        from dolfinx_mcp.tools.mesh import create_unit_square, mark_boundaries
+        from dolfinx_mcp.tools.problem import apply_boundary_condition
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
+        await create_function_space(
+            name="V", mesh_name="mesh", family="Lagrange", degree=1, ctx=ctx,
+        )
+        markers = [
+            {"tag": 1, "condition": "np.isclose(x[0], 0.0)"},
+            {"tag": 2, "condition": "np.isclose(x[0], 1.0)"},
+        ]
+        await mark_boundaries(markers=markers, ctx=ctx)
+
+        result = await apply_boundary_condition(
+            value=0.0, boundary_tag=1,
+            function_space="V", ctx=ctx,
+        )
+        assert "error" not in result, f"BC by tag failed: {result}"
+        assert result["num_dofs"] > 0
+
+    @pytest.mark.asyncio
+    async def test_boundary_tag_bc_nonexistent_tag(self, ctx):
+        """Request a tag that doesn't exist."""
+        from dolfinx_mcp.tools.mesh import create_unit_square, mark_boundaries
+        from dolfinx_mcp.tools.problem import apply_boundary_condition
+        from dolfinx_mcp.tools.spaces import create_function_space
+
+        await create_unit_square(name="mesh", nx=8, ny=8, ctx=ctx)
+        await create_function_space(
+            name="V", mesh_name="mesh", family="Lagrange", degree=1, ctx=ctx,
+        )
+        markers = [
+            {"tag": 1, "condition": "np.isclose(x[0], 0.0)"},
+        ]
+        await mark_boundaries(markers=markers, ctx=ctx)
+
+        result = await apply_boundary_condition(
+            value=0.0, boundary_tag=99,
+            function_space="V", ctx=ctx,
+        )
+        assert result.get("error") == "PRECONDITION_VIOLATED"
+        assert "99" in result.get("message", "")

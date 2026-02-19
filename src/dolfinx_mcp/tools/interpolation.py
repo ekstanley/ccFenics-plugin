@@ -18,7 +18,6 @@ from ..errors import (
     handle_tool_errors,
 )
 from ..eval_helpers import eval_numpy_expression
-from ..session import FunctionInfo
 from ._validators import require_nonempty
 
 logger = logging.getLogger(__name__)
@@ -246,10 +245,8 @@ async def create_function(
     )
 
     # Register in session
-    session.functions[name] = FunctionInfo(
-        name=name,
-        function=func,
-        space_name=function_space,
+    session.register_function(
+        name, func, function_space,
         description=f"Created: {expression or 'zero-initialized'}",
     )
 
@@ -431,8 +428,9 @@ async def project(
             ) from exc
 
     # Assemble and solve: M*u_h = b
-    a_form = ufl.inner(u, v) * ufl.dx
-    L_form = ufl.inner(source, v) * ufl.dx
+    dx = ufl.Measure("dx", domain=V.mesh)
+    a_form = ufl.inner(u, v) * dx
+    L_form = ufl.inner(source, v) * dx
 
     try:
         problem = dolfinx.fem.petsc.LinearProblem(
@@ -459,11 +457,8 @@ async def project(
         raise PostconditionError(f"L2 norm must be non-negative, got {stats['l2_norm']}.")
 
     # Store result as function in session
-    from ..session import FunctionInfo
-    session.functions[name] = FunctionInfo(
-        name=name,
-        function=uh,
-        space_name=target_space,
+    session.register_function(
+        name, uh, target_space,
         description=f"L2 projection of {'expression' if expression else source_function}",
     )
 

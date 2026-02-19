@@ -22,5 +22,7 @@ def compute_l2_norm(function: Any) -> float:
     from dolfinx.fem import assemble_scalar
     from dolfinx.fem import form as compile_form
 
-    l2_form = compile_form(ufl.inner(function, function) * ufl.dx)
+    mesh = function.function_space.mesh
+    dx = ufl.Measure("dx", domain=mesh)
+    l2_form = compile_form(ufl.inner(function, function) * dx)
     return float(np.sqrt(abs(assemble_scalar(l2_form))))

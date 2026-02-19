@@ -193,12 +193,11 @@ async def solve(
     )
     session.solutions[solution_name] = sol_info
 
-    # Also register as a function for post-processing
-    from ..session import FunctionInfo
-    session.functions[solution_name] = FunctionInfo(
-        name=solution_name,
-        function=uh,
-        space_name=space_name,
+    # Also register as a function for post-processing (allow re-solve overwrite)
+    if solution_name in session.functions:
+        del session.functions[solution_name]
+    session.register_function(
+        solution_name, uh, space_name,
         description="Solution of variational problem",
     )
 
@@ -492,12 +491,11 @@ async def solve_time_dependent(
     )
     session.solutions[solution_name] = sol_info
 
-    # Also register as function
-    from ..session import FunctionInfo
-    session.functions[solution_name] = FunctionInfo(
-        name=solution_name,
-        function=uh,
-        space_name=space_name,
+    # Also register as function (allow re-solve overwrite)
+    if solution_name in session.functions:
+        del session.functions[solution_name]
+    session.register_function(
+        solution_name, uh, space_name,
         description=f"Time-dependent solution at t={t:.3e}",
     )
 
@@ -739,12 +737,11 @@ async def solve_nonlinear(
     )
     session.solutions[sol_name] = sol_info
 
-    # Also register/update as a function
-    from ..session import FunctionInfo
-    session.functions[sol_name] = FunctionInfo(
-        name=sol_name,
-        function=u_func,
-        space_name=space_name,
+    # Also register/update as a function (allow re-solve overwrite)
+    if sol_name in session.functions:
+        del session.functions[sol_name]
+    session.register_function(
+        sol_name, u_func, space_name,
         description="Nonlinear solver solution",
     )
 
@@ -1000,11 +997,10 @@ async def solve_eigenvalue(
 
         # Register eigenvector in session
         vec_name = f"{solution_prefix}_{out_idx}"
-        from ..session import FunctionInfo
-        session.functions[vec_name] = FunctionInfo(
-            name=vec_name,
-            function=vr,
-            space_name=space_name,
+        if vec_name in session.functions:
+            del session.functions[vec_name]
+        session.register_function(
+            vec_name, vr, space_name,
             description=f"Eigenvector {out_idx} (eigenvalue={eigval.real:.6g})",
         )
         eigenvector_names.append(vec_name)

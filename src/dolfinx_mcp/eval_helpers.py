@@ -59,16 +59,22 @@ def eval_numpy_expression(expr: str, x: Any) -> Any:
         return np.full(x.shape[1], float(result))
     result = np.asarray(result)
     n_points = x.shape[1]
-    if result.shape != (n_points,) and result.shape != ():
-        try:
-            result = np.broadcast_to(result, (n_points,)).copy()
-        except ValueError as exc:
-            from .errors import PostconditionError
-            raise PostconditionError(
-                f"Expression produced shape {result.shape}, expected ({n_points},).",
-                suggestion="Expression must return a scalar or array matching "
-                "the number of mesh points.",
-            ) from exc
+    # Allow (N,) for scalar, (d, N) for vector-valued (d = gdim)
+    if result.shape == (n_points,) or (
+        result.ndim == 2 and result.shape[1] == n_points
+    ):
+        return result
+    if result.shape == ():
+        return np.full(n_points, float(result))
+    try:
+        result = np.broadcast_to(result, (n_points,)).copy()
+    except ValueError as exc:
+        from .errors import PostconditionError
+        raise PostconditionError(
+            f"Expression produced shape {result.shape}, expected ({n_points},) "
+            f"for scalar or (d, {n_points}) for vector-valued.",
+            suggestion="For vector fields use np.vstack([f1, f2]) or np.array([f1, f2]).",
+        ) from exc
     return result
 
 

@@ -180,6 +180,9 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
     ns["n"] = ufl.FacetNormal(mesh)
     ns["h"] = ufl.CellDiameter(mesh)
 
+    # Override bare dx with domain-bound measure (fixes multi-mesh ambiguity)
+    ns["dx"] = ufl.Measure("dx", domain=mesh)
+
     # Look up facet tags for this mesh to enable ds(tag) and dS(tag)
     mesh_name_resolved = mesh_name or session.active_mesh
     boundary_tags = None

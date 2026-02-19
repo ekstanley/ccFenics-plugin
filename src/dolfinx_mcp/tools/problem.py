@@ -23,7 +23,7 @@ from ..errors import (
     handle_tool_errors,
 )
 from ..eval_helpers import eval_numpy_expression, make_boundary_marker
-from ..session import BCInfo, FormInfo, FunctionInfo, FunctionSpaceInfo
+from ..session import BCInfo, FormInfo, FunctionSpaceInfo
 from ..ufl_context import build_namespace, safe_evaluate
 from ._validators import require_finite, require_nonempty
 
@@ -421,11 +421,54 @@ async def apply_boundary_condition(
                 suggestion="Check boundary expression. Example: 'np.isclose(x[0], 0.0)'",
             ) from exc
     elif boundary_tag is not None:
-        raise DOLFINxAPIError(
-            "Tagged boundary conditions require mesh facet tags. "
-            "Use create_custom_mesh with boundary marking first.",
-            suggestion="Use geometric boundary condition instead, or create a tagged mesh.",
-        )
+        # Look up facet tags for this mesh
+        mesh_name = fs_info.mesh_name
+        tag_info = None
+
+        # O(1) cache lookup
+        cached = session._boundary_tag_cache.get(mesh_name)
+        if cached and cached in session.mesh_tags:
+            tag_info = session.mesh_tags[cached]
+
+        # Fallback scan
+        if tag_info is None:
+            fdim = mesh.topology.dim - 1
+            for _tn, _ti in session.mesh_tags.items():
+                if _ti.mesh_name == mesh_name and _ti.dimension == fdim:
+                    tag_info = _ti
+                    break
+
+        # PRE: mesh tags must exist
+        if tag_info is None:
+            raise PreconditionError(
+                f"No boundary tags found for mesh '{mesh_name}'.",
+                suggestion="Call mark_boundaries() first to tag boundary facets, "
+                "or use a geometric 'boundary' condition instead.",
+            )
+
+        # PRE: requested tag must exist in available tags
+        if boundary_tag not in tag_info.unique_tags:
+            raise PreconditionError(
+                f"Boundary tag {boundary_tag} not found. "
+                f"Available tags: {tag_info.unique_tags}.",
+                suggestion=f"Valid tags for mesh '{mesh_name}': {tag_info.unique_tags}.",
+            )
+
+        try:
+            fdim = mesh.topology.dim - 1
+            tagged_facets = tag_info.tags.find(boundary_tag)
+            dofs = dolfinx.fem.locate_dofs_topological(
+                (V_dof, V_collapse) if sub_space is not None else V_dof,
+                fdim,
+                tagged_facets,
+            )
+        except DOLFINxMCPError:
+            raise
+        except Exception as exc:
+            raise DOLFINxAPIError(
+                f"Failed to locate DOFs for boundary tag {boundary_tag}: {exc}",
+                suggestion="Check that the tag corresponds to valid boundary facets.",
+            ) from exc
     else:
         raise DOLFINxAPIError(
             "Either 'boundary' (geometric) or 'boundary_tag' must be specified.",
@@ -602,10 +645,10 @@ async def set_material_properties(
         )
 
     session.ufl_symbols[name] = func
-    session.functions[name] = FunctionInfo(
-        name=name,
-        function=func,
-        space_name=actual_space_name,
+    if name in session.functions:
+        del session.functions[name]
+    session.register_function(
+        name, func, actual_space_name,
         description=f"Material property: {value}",
     )
 
