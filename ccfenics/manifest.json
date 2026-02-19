@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "ccfenics",
   "display_name": "DOLFINx FEM Solver",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "FEniCSx/DOLFINx finite element computing — 35 MCP tools for mesh generation, function spaces, variational forms, solvers, and post-processing",
   "long_description": "MCP server for scientific computing with the FEniCSx/DOLFINx finite element framework. Solve Poisson, elasticity, Stokes, Navier-Stokes, Helmholtz, eigenvalue problems and more. Runs inside a Docker container with the full DOLFINx/PETSc/SLEPc stack.",
   "author": {

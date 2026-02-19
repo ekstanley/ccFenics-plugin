@@ -38,9 +38,8 @@ def _prepare_point_eval(mesh: Any, points_list: list) -> tuple:
     Returns:
         (points_array, colliding_cells) where points_array has shape (3, N).
     """
-    import numpy as np
-
     import dolfinx.geometry
+    import numpy as np
 
     points_array = np.array(points_list, dtype=np.float64)
     if not np.isfinite(points_array).all():

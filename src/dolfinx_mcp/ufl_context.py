@@ -75,8 +75,8 @@ def _build_static_ns() -> dict[str, Any]:
     that never change between calls. Only mesh-specific geometry and session
     data are added per call in build_namespace().
     """
-    import ufl
     import numpy as np
+    import ufl
 
     return {
         "__builtins__": {},

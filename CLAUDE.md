@@ -1,6 +1,6 @@
 # DOLFINx MCP Server
 
-MCP server for FEniCSx/DOLFINx finite element computing. Version 0.10.0.
+MCP server for FEniCSx/DOLFINx finite element computing. Version 0.10.1.
 
 ## Quick Reference
 

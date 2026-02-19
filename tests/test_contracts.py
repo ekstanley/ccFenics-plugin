@@ -11,7 +11,6 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from conftest import (
     assert_error_type,
     make_bc_info,
@@ -36,14 +35,11 @@ from dolfinx_mcp.session import (
     BCInfo,
     EntityMapInfo,
     FormInfo,
-    FunctionInfo,
     FunctionSpaceInfo,
     MeshInfo,
-    MeshTagsInfo,
     SessionState,
     SolutionInfo,
 )
-
 
 # ---------------------------------------------------------------------------
 # Phase 2: Dataclass __post_init__ precondition tests (8 tests)
@@ -2800,7 +2796,8 @@ class TestBoundaryTagPreconditions:
             function_space="V", ctx=mock_ctx,
         )
         assert_error_type(result, "PRECONDITION_VIOLATED")
-        assert "boundary tags" in result["message"].lower() or "No boundary tags" in result["message"]
+        msg = result["message"]
+        assert "boundary tags" in msg.lower() or "No boundary tags" in msg
 
     @pytest.mark.asyncio
     async def test_boundary_tag_invalid_value(self, mock_ctx):

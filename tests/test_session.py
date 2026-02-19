@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
 from conftest import (
     make_bc_info,
     make_entity_map_info,
@@ -35,7 +34,6 @@ from dolfinx_mcp.session import (
     SessionState,
     SolutionInfo,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tests: initialization

@@ -447,10 +447,11 @@ async def read_workspace_file(
         )
 
     # Resolve path: treat relative paths as relative to /workspace/
-    if not file_path.startswith("/"):
-        resolved = Path("/workspace") / file_path
-    else:
-        resolved = Path(file_path)
+    resolved = (
+        Path("/workspace") / file_path
+        if not file_path.startswith("/")
+        else Path(file_path)
+    )
 
     resolved = resolved.resolve()
 
@@ -459,7 +460,10 @@ async def read_workspace_file(
     if not str(resolved).startswith(str(workspace_root) + os.sep) and resolved != workspace_root:
         raise FileIOError(
             f"Path '{file_path}' resolves outside /workspace/.",
-            suggestion="Provide a path within /workspace/ (e.g. 'solution.png' or '/workspace/output.vtu').",
+            suggestion=(
+                "Provide a path within /workspace/"
+                " (e.g. 'solution.png' or '/workspace/output.vtu')."
+            ),
         )
 
     # PRE-4: file exists
@@ -474,7 +478,10 @@ async def read_workspace_file(
     if file_size > _MAX_FILE_SIZE:
         raise PreconditionError(
             f"File size {file_size} bytes exceeds 10MB limit.",
-            suggestion="Use export_solution to write a smaller file, or access the Docker volume directly.",
+            suggestion=(
+                "Use export_solution to write a smaller file,"
+                " or access the Docker volume directly."
+            ),
         )
 
     # Determine encoding and MIME type
@@ -523,8 +530,10 @@ async def read_workspace_file(
     if actual_encoding == "base64":
         try:
             decoded = base64.b64decode(content)
-        except Exception:
-            raise PostconditionError("Generated base64 content is not decodable.")
+        except Exception as err:
+            raise PostconditionError(
+                "Generated base64 content is not decodable."
+            ) from err
         # POST-5: decoded size matches file size
         if len(decoded) != file_size:
             raise PostconditionError(
