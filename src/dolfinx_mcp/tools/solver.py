@@ -472,6 +472,15 @@ async def solve_time_dependent(
 
     wall_time_total = time.perf_counter() - t0_total
 
+    # Postcondition: time loop must reach t_end (within one dt)
+    if __debug__:
+        if abs(t - t_end) > dt:
+            raise PostconditionError(
+                f"Time loop ended at t={t:.6e}, expected t_end={t_end:.6e} "
+                f"(gap > dt={dt:.6e}).",
+                suggestion="Check time step size and loop condition.",
+            )
+
     # Store final solution
     from ..utils import compute_l2_norm
     l2_norm = compute_l2_norm(uh)

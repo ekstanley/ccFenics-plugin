@@ -720,6 +720,11 @@ async def plot_solution(
             )
 
         file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+        if file_size <= 0:
+            raise PostconditionError(
+                "Plot file is empty (0 bytes).",
+                suggestion="Check that PyVista rendered correctly.",
+            )
 
         if __debug__:
             session.check_invariants()

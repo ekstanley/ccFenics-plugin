@@ -202,12 +202,12 @@ class TestPart1Fundamentals:
         assert result["solution_norm_L2"] > 0
         assert math.isfinite(result["solution_norm_L2"])
 
-        # L2 error < 0.1 on coarse mesh (8x8, P1)
+        # L2 error < 0.05 on coarse mesh (8x8, P1); O(h²)≈0.032 for h≈0.18
         error_result = await compute_error(
             exact=exact_expr, norm_type="L2", ctx=ctx,
         )
         assert "error" not in error_result
-        assert error_result["error_value"] < 0.1
+        assert error_result["error_value"] < 0.05
         assert error_result["error_value"] >= 0
         assert math.isfinite(error_result["error_value"])
 
@@ -289,7 +289,7 @@ class TestPart2TimeDependentNonlinear:
 
         assert "error" not in result
         assert result["steps_completed"] > 0
-        assert abs(result["final_time"] - 0.3) < 0.1
+        assert abs(result["final_time"] - 0.3) < 1e-10  # 3 steps of dt=0.1
         assert result["solution_norm_L2"] > 0
         assert math.isfinite(result["solution_norm_L2"])
 
@@ -466,7 +466,7 @@ class TestPart3BoundaryConditions:
         center_val = eval_result["evaluations"][0]["value"]
         if isinstance(center_val, list):
             center_val = center_val[0]
-        assert abs(center_val - 0.5) < 0.05
+        assert abs(center_val - 0.5) < 1e-6  # linear u=x[0] is exact in P1
 
         session.check_invariants()
 
@@ -1328,7 +1328,7 @@ class TestT6OfficialDemoCoverage:
         lambda_exact = 2 * math.pi**2
         lambda_computed = result["eigenvalues"][0]["real"]
         relative_error = abs(lambda_computed - lambda_exact) / lambda_exact
-        assert relative_error < 0.05, (
+        assert relative_error < 0.02, (
             f"First eigenvalue {lambda_computed:.4f} deviates from exact "
             f"{lambda_exact:.4f} by {relative_error:.2%}"
         )

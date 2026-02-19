@@ -4,7 +4,7 @@
 
 MCP server for FEniCSx/DOLFINx finite element computing.
 
-**Version**: 0.9.0 | **License**: MIT | **Python**: >= 3.10 | **DOLFINx**: 0.10.0
+**Version**: 0.10.0 | **License**: MIT | **Python**: >= 3.10 | **DOLFINx**: 0.10.0
 
 Exposes 35 tools, 6 prompt templates, and 6 resources for mesh generation,
 function space creation, PDE solving, and post-processing through the
@@ -282,7 +282,7 @@ All 35 tools enforce runtime contracts:
 
 - **Preconditions**: Input validation (parameter types, ranges, existence checks)
 - **Postconditions**: Output validation (return structure, value constraints)
-- **Invariants**: 8 referential integrity invariants on SessionState
+- **Invariants**: 9 referential integrity invariants on SessionState
 
 Contract violations return structured error responses:
 
@@ -303,8 +303,9 @@ Error codes: `NO_ACTIVE_MESH`, `MESH_NOT_FOUND`, `FUNCTION_SPACE_NOT_FOUND`,
 
 ## Formal Verification (Lean 4)
 
-The 8 referential integrity invariants of `SessionState` are formally verified
+8 of the 9 referential integrity invariants of `SessionState` are formally verified
 in Lean 4 with machine-checked proofs. Located in `.outline/proofs/DolfinxProofs/`.
+INV-9 (FormInfo.trial_space_name) is specified in Quint and enforced at runtime.
 
 **20 theorems, 4 helper lemmas, zero `sorry` placeholders.**
 
@@ -341,8 +342,8 @@ pip install -e ".[dev]"
 ### Commands
 
 ```bash
-# Unit tests (no Docker required, 238 tests)
-pytest tests/ --ignore=tests/test_runtime_contracts.py -v
+# Unit tests (no Docker required, ~382 tests)
+pytest tests/ --ignore=tests/test_runtime_contracts.py --ignore=tests/test_tutorial_workflows.py --ignore=tests/test_edge_case_contracts.py -v
 
 # Docker integration tests
 docker build -t dolfinx-mcp .
@@ -361,7 +362,7 @@ ruff check src/ tests/ examples/
 src/dolfinx_mcp/
     server.py              Entry point
     _app.py                FastMCP instance + lifespan
-    session.py             SessionState (8 registries, 8 invariants)
+    session.py             SessionState (8 registries, 9 invariants)
     errors.py              13 error classes + decorator
     ufl_context.py         Restricted UFL expression evaluation
     tools/
@@ -371,13 +372,13 @@ src/dolfinx_mcp/
         solver.py          5 solver tools
         postprocess.py     6 post-processing tools
         interpolation.py   4 interpolation tools
-        session_mgmt.py    5 session management tools
+        session_mgmt.py    6 session management tools
     prompts/templates.py   6 workflow prompts
     resources/providers.py 6 URI resources
 
 src/dolfinx_mcp_jupyter/   JupyterLab extension (5 IPython magics)
 
-tests/                     14 test files, 341+ tests
+tests/                     17 test files, 478 tests (382 unit + 96 Docker)
 examples/                  Production readiness suite + 3D Poisson notebook
 .outline/proofs/           Lean 4 formal verification (20 theorems)
 ```

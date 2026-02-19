@@ -1,6 +1,6 @@
 # DOLFINx MCP Server
 
-MCP server for FEniCSx/DOLFINx finite element computing. Version 0.9.0.
+MCP server for FEniCSx/DOLFINx finite element computing. Version 0.10.0.
 
 ## Quick Reference
 
@@ -113,7 +113,7 @@ Preserves `__signature__` for FastMCP schema generation.
 
 `SessionState` has 8 typed registries: meshes, function_spaces, functions, bcs, forms, solutions, mesh_tags, entity_maps.
 
-8 referential integrity invariants (INV-1 through INV-8) verified by `check_invariants()`.
+9 referential integrity invariants (INV-1 through INV-9) verified by `check_invariants()`.
 Cascade deletion: removing a mesh removes all dependent spaces, functions, BCs, solutions, tags, and entity maps.
 
 ## Security Model
