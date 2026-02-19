@@ -1,0 +1,12 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.ipynb linguist-generated
+
+# Shell scripts must be LF
+*.sh text eol=lf

@@ -6,6 +6,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.10.0] - 2026-02-19
+
+### Added
+- `create_function` tool — create named functions in a function space (35th tool)
+- `read_workspace_file` tool — read files from /workspace as base64 or text
+- INV-9: `FormInfo.trial_space_name` must reference valid space (or be empty)
+- Cowork Desktop Extension manifest and plugin package (`ccfenics/`)
+- Community health files: CONTRIBUTING.md, SECURITY.md, CODE_OF_CONDUCT.md
+- GitHub issue/PR templates and Dependabot config
+- `.gitattributes` for cross-platform line ending normalization
+
+### Changed
+- Total tools: 33 -> 35
+- Total invariants: 8 -> 9 (INV-9 proven in Quint, enforced in Python)
+- Performance: UFL/numpy namespace caching (~70% faster per call)
+- Code DRY refactor: shared validators, session accessor, -190 LOC
+- Docker tests: 79 -> 152 (26 tutorial + 40 runtime + 26 edge + 48 cowork + 12 invariant)
+- CI: explicitly ignores all Docker-only test files
+- Tightened 4 FEM mathematical test tolerances
+
+### Fixed
+- 5 stress test bugs: DG0 warp guard, vector expressions, multi-mesh dx, boundary_tag BCs, register_function API
+- Mixed-space MUMPS auto-detection (mock-safe via element_family, not num_sub_spaces)
+- `solve_eigenvalue` session attribute bug (active_mesh not active_space)
+- Numeric expression coercion in `project` and `set_material_properties`
+- `_scalar_*` cascade deletion in `_remove_space_dependents`
+
+### Security
+- Sanitized git history (removed personal emails via git-filter-repo)
+- Removed tracked `.hypothesis/` cache (contained local filesystem paths)
+- Added SECURITY.md with vulnerability reporting instructions
+
+---
+
 ## [0.9.0] - 2026-02-12
 
 ### Added

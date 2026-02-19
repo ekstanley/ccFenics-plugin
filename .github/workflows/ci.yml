@@ -38,6 +38,8 @@ jobs:
       - run: >
           pytest tests/
           --ignore=tests/test_runtime_contracts.py
+          --ignore=tests/test_tutorial_workflows.py
+          --ignore=tests/test_poisson_workflow.py
           --cov=dolfinx_mcp
           --cov-report=term-missing
           -v
