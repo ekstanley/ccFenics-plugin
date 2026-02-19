@@ -2,8 +2,8 @@
   "manifest_version": "0.3",
   "name": "ccfenics",
   "display_name": "DOLFINx FEM Solver",
-  "version": "0.9.0",
-  "description": "FEniCSx/DOLFINx finite element computing — 34 MCP tools for mesh generation, function spaces, variational forms, solvers, and post-processing",
+  "version": "0.10.0",
+  "description": "FEniCSx/DOLFINx finite element computing — 35 MCP tools for mesh generation, function spaces, variational forms, solvers, and post-processing",
   "long_description": "MCP server for scientific computing with the FEniCSx/DOLFINx finite element framework. Solve Poisson, elasticity, Stokes, Navier-Stokes, Helmholtz, eigenvalue problems and more. Runs inside a Docker container with the full DOLFINx/PETSc/SLEPc stack.",
   "author": {
     "name": "DOLFINx MCP Contributors"
@@ -63,6 +63,7 @@
     { "name": "compute_functionals", "description": "Integrate UFL expressions over the domain" },
     { "name": "export_solution", "description": "Export to XDMF or VTK format" },
     { "name": "plot_solution", "description": "Contour or warp plots (PNG via PyVista)" },
+    { "name": "create_function", "description": "Create a named function in a function space" },
     { "name": "interpolate", "description": "Interpolate UFL expression into a function space" },
     { "name": "project", "description": "L2-project an expression onto a function space" },
     { "name": "create_discrete_operator", "description": "Build a discrete operator matrix" },
