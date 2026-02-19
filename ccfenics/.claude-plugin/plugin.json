@@ -1,7 +1,7 @@
 {
   "name": "ccfenics",
   "description": "FEniCSx/DOLFINx finite element computing plugin — 35 MCP tools for mesh generation, function spaces, variational forms, solvers, and post-processing",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "author": {
     "name": "DOLFINx MCP Contributors"
   },

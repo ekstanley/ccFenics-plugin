@@ -449,7 +449,10 @@ async def mark_boundaries(
 
     # Count tags (O(n) via return_counts instead of O(k*n) loop)
     unique_tags_arr, counts_arr = np.unique(tag_values, return_counts=True)
-    tag_counts = {int(t): int(c) for t, c in zip(unique_tags_arr, counts_arr)}
+    tag_counts = {
+        int(t): int(c)
+        for t, c in zip(unique_tags_arr, counts_arr, strict=True)
+    }
 
     if __debug__:
         session.check_invariants()
@@ -881,7 +884,10 @@ async def manage_mesh_tags(
 
         # Count tags (O(n) via return_counts instead of O(k*n) loop)
         unique_tags_arr, counts_arr = np.unique(tag_values, return_counts=True)
-        tag_counts = {int(t): int(c) for t, c in zip(unique_tags_arr, counts_arr)}
+        tag_counts = {
+            int(t): int(c)
+            for t, c in zip(unique_tags_arr, counts_arr, strict=True)
+        }
 
         if __debug__:
             session.check_invariants()

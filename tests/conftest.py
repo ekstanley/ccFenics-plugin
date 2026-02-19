@@ -18,7 +18,6 @@ from dolfinx_mcp.session import (
     SolutionInfo,
 )
 
-
 # ---------------------------------------------------------------------------
 # Factory helpers -- canonical versions used across all test files
 # ---------------------------------------------------------------------------

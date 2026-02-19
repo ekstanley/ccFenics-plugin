@@ -938,7 +938,6 @@ class TestT5RemainingTutorialCoverage:
         from dolfinx_mcp.tools.mesh import create_unit_square
         from dolfinx_mcp.tools.problem import (
             define_variational_form,
-            set_material_properties,
         )
         from dolfinx_mcp.tools.solver import solve
         from dolfinx_mcp.tools.spaces import create_function_space

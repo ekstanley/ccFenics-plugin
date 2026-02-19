@@ -958,7 +958,6 @@ class TestCoworkIssueFixes:
     @pytest.mark.asyncio
     async def test_vector_bc_elasticity_pipeline(self, session, ctx) -> None:
         """F1: Vector BC [1.0, 0.0] on a 2D vector space."""
-        import numpy as np
 
         from dolfinx_mcp.tools.mesh import create_unit_square
         from dolfinx_mcp.tools.problem import apply_boundary_condition
@@ -1048,7 +1047,6 @@ class TestPerformanceOptCorrectness:
     async def test_solver_diagnostics_uses_cached_l2_norm(self, session, ctx):
         """P6: get_solver_diagnostics returns cached L2 norm from solve()."""
         from dolfinx_mcp.tools.mesh import create_unit_square
-        from dolfinx_mcp.tools.postprocess import compute_error
         from dolfinx_mcp.tools.problem import (
             apply_boundary_condition,
             define_variational_form,
@@ -1099,14 +1097,20 @@ class TestReportV2Fixes:
         await create_function_space(name="Q", family="Lagrange", degree=1, ctx=ctx)
         await create_mixed_space(name="W", subspaces=["V", "Q"], ctx=ctx)
         await set_material_properties(name="f", value="0.0", function_space="Q", ctx=ctx)
+        stokes_bilinear = (
+            "inner(grad(split(u)[0]), grad(split(v)[0])) * dx"
+            " - split(v)[0][0].dx(0) * split(u)[1] * dx"
+            " + split(u)[0][0].dx(0) * split(v)[1] * dx"
+        )
         await define_variational_form(
-            bilinear="inner(grad(split(u)[0]), grad(split(v)[0])) * dx - split(v)[0][0].dx(0) * split(u)[1] * dx + split(u)[0][0].dx(0) * split(v)[1] * dx",
+            bilinear=stokes_bilinear,
             linear="f * split(v)[1] * dx",
             trial_space="W",
             ctx=ctx,
         )
         await apply_boundary_condition(
-            value=[0.0, 0.0], boundary="True", sub_space=0, function_space="W", ctx=ctx,
+            value=[0.0, 0.0], boundary="True",
+            sub_space=0, function_space="W", ctx=ctx,
         )
 
         # No petsc_options — auto-MUMPS should kick in
@@ -1132,8 +1136,13 @@ class TestReportV2Fixes:
         await create_function_space(name="Q", family="Lagrange", degree=1, ctx=ctx)
         await create_mixed_space(name="W", subspaces=["V", "Q"], ctx=ctx)
         await set_material_properties(name="f", value="0.0", function_space="Q", ctx=ctx)
+        stokes_bilinear = (
+            "inner(grad(split(u)[0]), grad(split(v)[0])) * dx"
+            " - split(v)[0][0].dx(0) * split(u)[1] * dx"
+            " + split(u)[0][0].dx(0) * split(v)[1] * dx"
+        )
         await define_variational_form(
-            bilinear="inner(grad(split(u)[0]), grad(split(v)[0])) * dx - split(v)[0][0].dx(0) * split(u)[1] * dx + split(u)[0][0].dx(0) * split(v)[1] * dx",
+            bilinear=stokes_bilinear,
             linear="f * split(v)[1] * dx",
             trial_space="W",
             ctx=ctx,

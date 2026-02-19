@@ -589,7 +589,10 @@ async def set_material_properties(
         if math.isfinite(numeric_val):
             constant = dolfinx.fem.Constant(mesh_info.mesh, numeric_val)
             session.ufl_symbols[name] = constant
-            logger.info("Set constant material property '%s' = %s (coerced from string)", name, value)
+            logger.info(
+                "Set constant material property '%s' = %s (coerced)",
+                name, value,
+            )
             return {"name": name, "type": "constant", "value": numeric_val}
     except (ValueError, TypeError):
         pass  # Not numeric, proceed with interpolation
