@@ -184,20 +184,28 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
     ns["dx"] = ufl.Measure("dx", domain=mesh)
 
     # Look up facet tags for this mesh to enable ds(tag) and dS(tag)
-    mesh_name_resolved = mesh_name or session.active_mesh
+    mesh_name_resolved: str | None = mesh_name or session.active_mesh
     boundary_tags = None
     interior_tags = None
     fdim = mesh.topology.dim - 1
 
     # O(1) cache lookup for boundary tags
-    cached_bt = session._boundary_tag_cache.get(mesh_name_resolved)
+    cached_bt = (
+        session._boundary_tag_cache.get(mesh_name_resolved)
+        if mesh_name_resolved is not None
+        else None
+    )
     if cached_bt and cached_bt in session.mesh_tags:
         bt_info = session.mesh_tags[cached_bt]
         if bt_info.dimension == fdim:
             boundary_tags = bt_info.tags
 
     # O(1) cache lookup for interior tags
-    cached_it = session._interior_tag_cache.get(mesh_name_resolved)
+    cached_it = (
+        session._interior_tag_cache.get(mesh_name_resolved)
+        if mesh_name_resolved is not None
+        else None
+    )
     if cached_it and cached_it in session.mesh_tags:
         it_info = session.mesh_tags[cached_it]
         if it_info.dimension == fdim:
@@ -210,10 +218,12 @@ def build_namespace(session: SessionState, mesh_name: str | None = None) -> dict
                 if tag_info.name.startswith("interior_"):
                     if interior_tags is None:
                         interior_tags = tag_info.tags
-                        session._interior_tag_cache[mesh_name_resolved] = tag_info.name
+                        if mesh_name_resolved is not None:
+                            session._interior_tag_cache[mesh_name_resolved] = tag_info.name
                 elif boundary_tags is None:
                     boundary_tags = tag_info.tags
-                    session._boundary_tag_cache[mesh_name_resolved] = tag_info.name
+                    if mesh_name_resolved is not None:
+                        session._boundary_tag_cache[mesh_name_resolved] = tag_info.name
             if boundary_tags is not None and interior_tags is not None:
                 break
 

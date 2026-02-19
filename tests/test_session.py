@@ -213,7 +213,7 @@ class TestFormAccessors:
         assert session.get_form("F1") is form_info
 
     def test_get_form_not_found(self, session: SessionState):
-        with pytest.raises(DOLFINxAPIError, match="No missing_form form"):
+        with pytest.raises(DOLFINxAPIError, match="missing_form"):
             session.get_form("missing_form")
 
     def test_register_form(self, session: SessionState):

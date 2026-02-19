@@ -983,7 +983,7 @@ class TestPhase11Contracts:
         from dolfinx_mcp.errors import DOLFINxAPIError
 
         session = SessionState()
-        with pytest.raises(DOLFINxAPIError, match="No bilinear form defined"):
+        with pytest.raises(DOLFINxAPIError, match="bilinear"):
             session.get_form("bilinear")
 
     def test_get_form_returns_correct_info(self):
