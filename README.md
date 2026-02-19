@@ -1,25 +1,28 @@
 # dolfinx-mcp
 
-[![CI](https://github.com/ekstanley/ccFenics-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/ekstanley/ccFenics-plugin/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://python.org)
+[![CI](https://github.com/ekstanley/ccFenics-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/ekstanley/ccFenics-plugin/actions/workflows/ci.yml) [![CodeQL](https://github.com/ekstanley/ccFenics-plugin/actions/workflows/codeql.yml/badge.svg)](https://github.com/ekstanley/ccFenics-plugin/actions/workflows/codeql.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://python.org)
 
-MCP server for FEniCSx/DOLFINx finite element computing.
+**Talk to your PDE solver.** An [MCP](https://modelcontextprotocol.io/) server that gives AI assistants direct access to the [FEniCSx/DOLFINx](https://fenicsproject.org/) finite element framework. Describe a PDE in natural language and the tools handle the rest — mesh generation, function spaces, assembly, solving, and post-processing — all inside a sandboxed Docker container.
 
-**Version**: 0.10.0 | **License**: MIT | **Python**: >= 3.10 | **DOLFINx**: 0.10.0
-
-Exposes 35 tools, 6 prompt templates, and 6 resources for mesh generation,
-function space creation, PDE solving, and post-processing through the
-[Model Context Protocol](https://modelcontextprotocol.io/). Runs inside a
-Docker container with the full DOLFINx/PETSc stack.
+<table>
+<tr>
+<td align="center"><strong>35</strong><br>MCP Tools</td>
+<td align="center"><strong>37</strong><br>FEM Skills</td>
+<td align="center"><strong>478</strong><br>Tests</td>
+<td align="center"><strong>9</strong><br>Invariants</td>
+<td align="center"><strong>20</strong><br>Lean 4 Theorems</td>
+</tr>
+</table>
 
 ```
-                     MCP Client                              Docker Container
-               (Claude, Cursor, ...)                      (dolfinx/dolfinx:stable)
-              +---------------------+                    +-----------------------+
-              |                     |    JSON-RPC         |  FastMCP Server       |
-              |  "Solve the 3D     | ---- stdio -------> |    35 Tool Handlers   |
-              |   Poisson equation" |    or HTTP          |    SessionState       |
-              |                     | <------------------ |    /workspace output  |
-              +---------------------+                    +-----------------------+
+              MCP Client                              Docker Container
+         (Claude, Cursor, ...)                      (dolfinx/dolfinx:stable)
+        +---------------------+                    +-----------------------+
+        |                     |    JSON-RPC         |  FastMCP Server       |
+        |  "Solve the 3D      | ── stdio/http ───> |    35 Tool Handlers   |
+        |   Poisson equation" |                     |    SessionState       |
+        |                     | <─────────────────  |    /workspace output  |
+        +---------------------+                    +-----------------------+
 ```
 
 ---
@@ -34,11 +37,10 @@ cd ccFenics-plugin
 docker build -t dolfinx-mcp .
 ```
 
-### 2. Configure MCP Client
+### 2. Configure Your MCP Client
 
-Add to your MCP client configuration (Claude Desktop, Cursor, VS Code, etc.).
-Change `/path/to/workspace` to the directory where you want simulation output
-(VTK, XDMF files):
+Add to your client configuration (Claude Desktop, Cursor, VS Code, etc.).
+Set `/path/to/workspace` to the directory for simulation output (VTK, XDMF):
 
 ```json
 {
@@ -55,54 +57,41 @@ Change `/path/to/workspace` to the directory where you want simulation output
 }
 ```
 
-### Claude Code Users
+<details>
+<summary><strong>Claude Code</strong> — zero-config setup</summary>
 
-This repo includes `.mcp.json` for automatic MCP server discovery.
-Just open Claude Code in the repo directory after building the Docker image:
+This repo includes `.mcp.json` for automatic MCP server discovery:
 
 1. `docker build -t dolfinx-mcp .`
-2. Open Claude Code: `claude` (from the repo root)
-3. The server auto-connects -- start asking FEM questions
+2. `claude` (from the repo root)
+3. Start asking FEM questions — the server auto-connects
 
-No manual MCP configuration needed.
-
-#### Plugin mode (37 skills, 6 agents, 6 commands)
-
-For the full FEM-aware experience with guided workflows, solver selection, and
-debugging skills, load the bundled plugin:
+For the full FEM-aware experience (37 skills, 6 agents, 6 commands):
 
 ```bash
 claude --plugin-dir ./ccfenics
 ```
 
-Skills are namespaced under `/ccfenics:` (e.g., `/ccfenics:solve-poisson`,
-`/ccfenics:tutorial-chapter`).
+</details>
 
-### Claude Cowork Users
-
-The `ccfenics/` directory contains a Desktop Extension manifest for
-installing in the Cowork UI:
+<details>
+<summary><strong>Claude Cowork</strong> — Desktop Extension</summary>
 
 1. Build the Docker image: `docker build -t dolfinx-mcp .`
-2. In Cowork, go to **Extensions** and select **Install from folder**
-3. Point it to the `ccfenics/` directory in this repo
-4. When prompted, choose a **Workspace Directory** for simulation output
-5. The 35 MCP tools become available in your Cowork session
+2. In Cowork, go to **Extensions** > **Install from folder**
+3. Point to the `ccfenics/` directory in this repo
+4. Choose a **Workspace Directory** for simulation output
 
-The workspace directory is where exported files (VTK, XDMF) are written.
-It defaults to `~/dolfinx-workspace` and can be changed in the extension
-settings after installation.
+The 35 MCP tools become available in your Cowork session.
 
-> **Note**: The Docker image must be built locally before the extension can
-> connect to the server. The extension runs `docker run` under the hood.
+</details>
 
 ### 3. Use
 
-Ask your AI assistant to solve a PDE -- the MCP tools handle the DOLFINx
-operations inside the container:
+Ask your AI assistant to solve a PDE:
 
 > "Create a 16x16 unit square mesh and solve the Poisson equation
-> with f = 2*pi^2*sin(pi*x)*sin(pi*y), then compute the L2 error."
+> with f = 2pi^2 sin(pi x) sin(pi y), then compute the L2 error."
 
 ---
 
@@ -129,6 +118,23 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 **Iso-surfaces at u = 0.2, 0.5, 0.8 (nested concentric level sets):**
 
 ![3D Poisson iso-surfaces](examples/3d_poisson_isosurfaces.png)
+
+---
+
+## Supported Problems
+
+| Category | PDE Types |
+|----------|-----------|
+| **Elliptic** | Poisson, Helmholtz, mixed Poisson (RT elements), singular Poisson (nullspace), complex-valued |
+| **Parabolic** | Heat equation, Cahn-Hilliard, Allen-Cahn |
+| **Flow** | Stokes (Taylor-Hood), Navier-Stokes (IPCS) |
+| **Solid Mechanics** | Linear elasticity, hyperelasticity (neo-Hookean), membrane deflection |
+| **Electromagnetics** | H(curl) formulations with Nedelec edge elements |
+| **Special** | Biharmonic (C/IP-DG), discontinuous Galerkin, eigenvalue (SLEPc), axisymmetric |
+
+**Boundary conditions**: Dirichlet, Neumann, Robin, Nitsche (weak), component-wise, multi-region.
+**Elements**: Lagrange (P1-P5), DG, Nedelec, Raviart-Thomas, BDM, Crouzeix-Raviart, mixed.
+**Solvers**: Direct (LU, MUMPS), iterative (CG, GMRES, BiCGSTAB) with preconditioners (ILU, Hypre AMG, Jacobi), Newton (SNES), time-stepping (Euler, Crank-Nicolson).
 
 ---
 
@@ -206,24 +212,57 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 
 ---
 
-## Prompt Templates (6)
+## Claude Code Plugin
 
-Built-in workflow guides accessible via MCP prompt protocol:
+The `ccfenics/` directory adds FEM domain intelligence on top of the 35 MCP tools.
+Load it with `claude --plugin-dir ./ccfenics`.
+
+### Agents (6)
+
+| Agent | What it does |
+|-------|-------------|
+| `fem-solver` | End-to-end PDE solve pipeline (mesh to post-processing) |
+| `convergence-study` | Automated mesh refinement with convergence rate fitting |
+| `nonlinear-solver` | Newton method with load stepping and convergence diagnostics |
+| `time-dependent-solver` | Transient PDE workflows (initial conditions, time stepping, output) |
+| `boundary-condition-setup` | Complex BC configuration (Dirichlet, Neumann, Robin, Nitsche) |
+| `mesh-quality` | Mesh quality analysis and refinement recommendations |
+
+### Skills (37)
+
+Guided workflows for every supported PDE type, plus solver selection, element selection,
+and debugging. Triggered automatically when you describe a problem:
+
+> "Solve a Stokes flow problem" &rarr; `fem-workflow-stokes`
+> "My solver diverged" &rarr; `fem-debugging`
+
+### Commands (6)
+
+| Command | Description |
+|---------|-------------|
+| `/solve-poisson` | End-to-end Poisson solve with manufactured solution |
+| `/tutorial-chapter` | Walk through a DOLFINx tutorial chapter step-by-step |
+| `/run-tests` | Run the test suite with coverage |
+| `/check-contracts` | Audit Design-by-Contract compliance |
+| `/add-tool` | Scaffold a new MCP tool |
+| `/verify-installation` | Check Docker, container, and server status |
+
+---
+
+## MCP Protocol
+
+### Prompt Templates (6)
 
 | Prompt | Description |
 |--------|-------------|
-| `setup_poisson` | Guided Poisson equation setup (-div(grad u) = f) |
+| `setup_poisson` | Guided Poisson equation setup |
 | `setup_elasticity` | Linear elasticity problem workflow |
-| `setup_stokes` | Stokes flow problem with mixed elements |
+| `setup_stokes` | Stokes flow with mixed elements |
 | `setup_navier_stokes` | Navier-Stokes with time stepping |
 | `debug_convergence` | Diagnose solver convergence failures |
 | `convergence_study` | h-refinement convergence rate study |
 
----
-
-## Resources (6)
-
-URI-addressable resources for MCP resource protocol:
+### Resources (6)
 
 | URI | Content |
 |-----|---------|
@@ -234,9 +273,7 @@ URI-addressable resources for MCP resource protocol:
 | `dolfinx://session/overview` | Current session state summary |
 | `dolfinx://solver/options` | Available solver and preconditioner options |
 
----
-
-## Transport Modes
+### Transport Modes
 
 | Mode | Command | Use Case |
 |------|---------|----------|
@@ -255,7 +292,7 @@ docker-compose -f docker-compose.lab.yml up --build
 # Open http://localhost:8888
 ```
 
-Or install the extension directly:
+Or install directly:
 
 ```bash
 pip install dolfinx-mcp[jupyter]
@@ -303,13 +340,11 @@ Error codes: `NO_ACTIVE_MESH`, `MESH_NOT_FOUND`, `FUNCTION_SPACE_NOT_FOUND`,
 
 ## Formal Verification (Lean 4)
 
-8 of the 9 referential integrity invariants of `SessionState` are formally verified
-in Lean 4 with machine-checked proofs. Located in `.outline/proofs/DolfinxProofs/`.
-INV-9 (FormInfo.trial_space_name) is specified in Quint and enforced at runtime.
+8 of the 9 referential integrity invariants are formally verified in Lean 4
+with machine-checked proofs. INV-9 (`FormInfo.trial_space_name`) is specified
+in Quint and enforced at runtime.
 
 **20 theorems, 4 helper lemmas, zero `sorry` placeholders.**
-
-Key results:
 
 | Theorem | What it proves |
 |---------|---------------|
@@ -331,29 +366,42 @@ lake build    # exits 0, zero warnings
 
 ---
 
-## Development
+## Security
 
-### Setup
+Three-layer defense for UFL expression evaluation:
+
+1. **Token blocklist** — `_check_forbidden()` rejects `import`, `__`, `exec`, `eval`, `open`, `os.`, `subprocess`, and 12 more tokens at parse time
+2. **Empty `__builtins__`** — expression namespaces have no access to Python internals
+3. **Docker isolation** — container runs with `--network none`, non-root user, `--rm`
+
+`run_custom_code` intentionally bypasses the blocklist (full `__builtins__`).
+Docker isolation is the sole boundary for custom code execution.
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
+---
+
+## Development
 
 ```bash
 pip install -e ".[dev]"
 ```
 
-### Commands
-
 ```bash
-# Unit tests (no Docker required, ~382 tests)
-pytest tests/ --ignore=tests/test_runtime_contracts.py --ignore=tests/test_tutorial_workflows.py --ignore=tests/test_edge_case_contracts.py -v
+# Unit tests (no Docker, 230 tests)
+pytest tests/ \
+  --ignore=tests/test_runtime_contracts.py \
+  --ignore=tests/test_tutorial_workflows.py \
+  --ignore=tests/test_edge_case_contracts.py \
+  --ignore=tests/test_poisson_workflow.py
 
-# Docker integration tests
+# Docker integration tests (248 tests)
 docker build -t dolfinx-mcp .
-pytest tests/test_runtime_contracts.py -v
+./scripts/run-docker-tests.sh
 
-# Production readiness suite (all 35 tools via MCP protocol)
-python examples/production_readiness.py --verbose
-
-# Lint
-ruff check src/ tests/ examples/
+# Lint & type check
+ruff check src/ tests/
+pyright src/dolfinx_mcp/
 ```
 
 ### Project Structure
@@ -378,12 +426,17 @@ src/dolfinx_mcp/
 
 src/dolfinx_mcp_jupyter/   JupyterLab extension (5 IPython magics)
 
-tests/                     17 test files, 478 tests (382 unit + 96 Docker)
-examples/                  Production readiness suite + 3D Poisson notebook
+tests/                     17 test files, 478 tests (230 unit + 248 Docker)
+examples/                  3D Poisson notebook + production readiness suite
 .outline/proofs/           Lean 4 formal verification (20 theorems)
+ccfenics/                  Claude Code plugin (37 skills, 6 agents, 6 commands)
 ```
 
 ---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and the new tool checklist.
 
 ## License
 
