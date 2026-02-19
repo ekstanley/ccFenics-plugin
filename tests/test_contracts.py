@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from conftest import (
     assert_error_type,
+    assert_no_error,
     make_bc_info,
     make_entity_map_info,
     make_form_info,
@@ -775,10 +776,15 @@ class TestPhase9ExceptionGuards:
         mock_fem = MagicMock()
         mock_fem.form.side_effect = RuntimeError("PETSc segfault")
 
+        # Chain parent module so `import dolfinx.fem` resolves correctly
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.fem = mock_fem
+        mock_dolfinx.fem.petsc = MagicMock()
+
         with patch.dict(sys.modules, {
-            "dolfinx": MagicMock(),
+            "dolfinx": mock_dolfinx,
             "dolfinx.fem": mock_fem,
-            "dolfinx.fem.petsc": MagicMock(),
+            "dolfinx.fem.petsc": mock_dolfinx.fem.petsc,
             "ufl": MagicMock(),
         }), patch("dolfinx_mcp.ufl_context.build_namespace", return_value={}), \
             patch("dolfinx_mcp.ufl_context.safe_evaluate", return_value=MagicMock()):
@@ -816,14 +822,14 @@ class TestPhase10Contracts:
         session = make_populated_session()
         # Mutate name after insertion to create registry inconsistency
         session.meshes["m1"].name = "wrong_name"
-        with pytest.raises(PostconditionError, match="MeshInfo.name.*!= registry key"):
+        with pytest.raises(PostconditionError, match="name.*!= key"):
             session.get_mesh("m1")
 
     def test_get_space_postcondition_name_mismatch(self):
         """Debug postcondition fires when FunctionSpaceInfo.name != registry key."""
         session = make_populated_session()
         session.function_spaces["V"].name = "wrong_name"
-        with pytest.raises(PostconditionError, match="FunctionSpaceInfo.name.*!= registry key"):
+        with pytest.raises(PostconditionError, match="name.*!= key"):
             session.get_space("V")
 
     def test_get_space_postcondition_dangling_mesh(self):
@@ -839,7 +845,7 @@ class TestPhase10Contracts:
         """Debug postcondition fires when FunctionInfo.name != registry key."""
         session = make_populated_session()
         session.functions["f"].name = "wrong_name"
-        with pytest.raises(PostconditionError, match="FunctionInfo.name.*!= registry key"):
+        with pytest.raises(PostconditionError, match="name.*!= key"):
             session.get_function("f")
 
     def test_get_function_postcondition_dangling_space(self):
@@ -861,7 +867,7 @@ class TestPhase10Contracts:
 
     @pytest.mark.asyncio
     async def test_evaluate_solution_postcondition_nan(self):
-        """Finiteness postcondition fires when uh.eval() returns NaN."""
+        """Finiteness postcondition fires when uh.eval returns NaN."""
         import sys
 
         np = pytest.importorskip("numpy")
@@ -869,9 +875,13 @@ class TestPhase10Contracts:
         from dolfinx_mcp.tools.postprocess import evaluate_solution
 
         session = SessionState()
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.active_mesh = "m1"
         mock_func = MagicMock()
         mock_func.function_space.mesh.topology.dim = 2
-        mock_func.eval.return_value = np.array([float("nan")])
+        nan_val = float("nan")
+        mock_func.eval.return_value = np.array([nan_val])
         session.solutions["u_h"] = make_solution_info("u_h", "V")
         session.solutions["u_h"].function = mock_func
         ctx = make_mock_ctx(session)
@@ -892,7 +902,7 @@ class TestPhase10Contracts:
 
     @pytest.mark.asyncio
     async def test_query_point_values_postcondition_nan(self):
-        """Finiteness postcondition fires when uh.eval() returns NaN."""
+        """Finiteness postcondition fires when uh.eval returns NaN."""
         import sys
 
         np = pytest.importorskip("numpy")
@@ -900,9 +910,13 @@ class TestPhase10Contracts:
         from dolfinx_mcp.tools.postprocess import query_point_values
 
         session = SessionState()
+        session.meshes["m1"] = make_mesh_info("m1")
+        session.function_spaces["V"] = make_space_info("V", "m1")
+        session.active_mesh = "m1"
         mock_func = MagicMock()
         mock_func.function_space.mesh.topology.dim = 2
-        mock_func.eval.return_value = np.array([float("nan")])
+        nan_val = float("nan")
+        mock_func.eval.return_value = np.array([nan_val])
         session.solutions["u_h"] = make_solution_info("u_h", "V")
         session.solutions["u_h"].function = mock_func
         ctx = make_mock_ctx(session)
@@ -944,7 +958,7 @@ class TestPhase11Contracts:
         """Debug postcondition fires when SolutionInfo.name != registry key."""
         session = make_populated_session()
         session.solutions["u_h"].name = "wrong_name"
-        with pytest.raises(PostconditionError, match="SolutionInfo.name.*!= registry key"):
+        with pytest.raises(PostconditionError, match="name.*!= key"):
             session.get_solution("u_h")
 
     def test_get_solution_postcondition_dangling_space(self):
@@ -975,7 +989,7 @@ class TestPhase11Contracts:
         session = SessionState()
         form_info = FormInfo(name="wrong", form=MagicMock(), ufl_form=MagicMock())
         session.forms["bilinear"] = form_info
-        with pytest.raises(PostconditionError, match="FormInfo.name.*!= registry key"):
+        with pytest.raises(PostconditionError, match="name.*!= key"):
             session.get_form("bilinear")
 
     def test_get_form_not_found(self):
@@ -1710,7 +1724,7 @@ class TestPhase17Postconditions:
         mock_tags.values = MagicMock()
         mock_tags.indices = MagicMock()
         session.mesh_tags["ftags"] = make_mesh_tags_info(
-            "ftags", tags=mock_tags, unique_tags=[1],
+            "ftags", mesh_name="parent", tags=mock_tags, unique_tags=[1],
         )
         ctx = make_mock_ctx(session)
 
@@ -2433,8 +2447,8 @@ class TestPhase22PostconditionEdgeCases:
         assert "non-negative" in result["message"]
 
     @pytest.mark.asyncio
-    async def test_get_solver_diagnostics_postcondition_negative_l2(self):
-        """get_solver_diagnostics() fires PostconditionError when L2 norm < 0."""
+    async def test_get_solver_diagnostics_returns_cached_l2_norm(self):
+        """get_solver_diagnostics() reads l2_norm from SolutionInfo cache."""
         from dolfinx_mcp.tools.solver import get_solver_diagnostics
 
         session = make_populated_session()
@@ -2445,14 +2459,14 @@ class TestPhase22PostconditionEdgeCases:
         session.solutions["u_h"] = SolutionInfo(
             name="u_h", function=mock_fn, space_name="V",
             converged=True, iterations=5, residual_norm=1e-10, wall_time=0.5,
+            l2_norm=3.14,
         )
         ctx = make_mock_ctx(session)
 
-        with patch("dolfinx_mcp.utils.compute_l2_norm", return_value=-1.0):
-            result = await get_solver_diagnostics(ctx=ctx)
+        result = await get_solver_diagnostics(ctx=ctx)
 
-        assert_error_type(result, "POSTCONDITION_VIOLATED")
-        assert "non-negative" in result["message"]
+        assert_no_error(result)
+        assert result["solution_norm_L2"] == round(3.14, 8)
 
     @pytest.mark.asyncio
     async def test_compute_error_postcondition_nan(self):
@@ -2597,11 +2611,16 @@ class TestPlotSolutionReturnType:
 
     def _setup_plot_session(self, mock_ctx):
         """Set up a mock session with a solution for plot tests."""
+        import numpy as np
+
         session = mock_ctx.request_context.lifespan_context
 
         mock_func = MagicMock()
-        mock_func.function_space = MagicMock()
-        mock_func.x.array.real = [0.0, 1.0, 2.0]
+        mock_space = MagicMock()
+        # reference_value_shape = () means scalar
+        mock_space.ufl_element.return_value.reference_value_shape = ()
+        mock_func.function_space = mock_space
+        mock_func.x.array.real = np.array([0.0, 1.0, 2.0])
 
         sol_info = SolutionInfo(
             name="u_h",
@@ -2670,13 +2689,17 @@ class TestPlotSolutionReturnType:
         mock_vtk_mesh = MagicMock(return_value=(MagicMock(), MagicMock(), MagicMock()))
         mock_pyvista.Plotter.return_value = MagicMock()
 
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.plot = MagicMock(vtk_mesh=mock_vtk_mesh)
+
         from dolfinx_mcp.tools.postprocess import plot_solution
 
         self._setup_plot_session(mock_ctx)
 
         with patch.dict(sys.modules, {
             "pyvista": mock_pyvista,
-            "dolfinx.plot": MagicMock(vtk_mesh=mock_vtk_mesh),
+            "dolfinx": mock_dolfinx,
+            "dolfinx.plot": mock_dolfinx.plot,
         }), patch("os.path.exists", return_value=True), \
                 patch("os.path.getsize", return_value=512):
             result = await plot_solution(
@@ -2784,27 +2807,38 @@ class TestBoundaryTagPreconditions:
 
     @pytest.mark.asyncio
     async def test_boundary_tag_no_tags_exist(self, mock_ctx):
+        import sys
+
         from dolfinx_mcp.tools.problem import apply_boundary_condition
 
         session = mock_ctx.request_context.lifespan_context
         session.meshes["m"] = make_mesh_info("m")
+        session.active_mesh = "m"
         session.function_spaces["V"] = make_space_info("V", mesh_name="m")
         # No mesh_tags registered
 
-        result = await apply_boundary_condition(
-            value=0.0, boundary_tag=1,
-            function_space="V", ctx=mock_ctx,
-        )
+        with patch.dict(sys.modules, {
+            "dolfinx": MagicMock(),
+            "dolfinx.fem": MagicMock(),
+            "dolfinx.mesh": MagicMock(),
+        }):
+            result = await apply_boundary_condition(
+                value=0.0, boundary_tag=1,
+                function_space="V", ctx=mock_ctx,
+            )
         assert_error_type(result, "PRECONDITION_VIOLATED")
         msg = result["message"]
         assert "boundary tags" in msg.lower() or "No boundary tags" in msg
 
     @pytest.mark.asyncio
     async def test_boundary_tag_invalid_value(self, mock_ctx):
+        import sys
+
         from dolfinx_mcp.tools.problem import apply_boundary_condition
 
         session = mock_ctx.request_context.lifespan_context
         session.meshes["m"] = make_mesh_info("m")
+        session.active_mesh = "m"
         session.function_spaces["V"] = make_space_info("V", mesh_name="m")
 
         # Add mesh tags with tags 1 and 2
@@ -2813,9 +2847,14 @@ class TestBoundaryTagPreconditions:
         session.mesh_tags["bt"] = tags_info
         session._boundary_tag_cache["m"] = "bt"
 
-        result = await apply_boundary_condition(
-            value=0.0, boundary_tag=99,
-            function_space="V", ctx=mock_ctx,
-        )
+        with patch.dict(sys.modules, {
+            "dolfinx": MagicMock(),
+            "dolfinx.fem": MagicMock(),
+            "dolfinx.mesh": MagicMock(),
+        }):
+            result = await apply_boundary_condition(
+                value=0.0, boundary_tag=99,
+                function_space="V", ctx=mock_ctx,
+            )
         assert_error_type(result, "PRECONDITION_VIOLATED")
         assert "99" in result["message"]

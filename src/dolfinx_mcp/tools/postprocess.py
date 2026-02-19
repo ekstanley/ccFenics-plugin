@@ -608,6 +608,19 @@ async def plot_solution(
         and session.function_spaces[func_info.space_name].element_family == "Mixed"
     )
 
+    # PRE-DG0: DG0 has cell-wise constants -- PyVista warp needs vertex data
+    # Checked before pyvista import so precondition fires even without pyvista
+    if plot_type == "warp" and func_info.space_name in session.function_spaces:
+        sp = session.function_spaces[func_info.space_name]
+        if sp.element_degree == 0 and sp.element_family in (
+            "DG", "Discontinuous Lagrange",
+        ):
+            raise PreconditionError(
+                "Warp plots not supported for DG0 (piecewise constant) functions. "
+                "DG0 has cell-wise constant values with no vertex data for warping.",
+                suggestion="Use plot_type='contour' instead, or project to CG1 first.",
+            )
+
     # Try to import pyvista
     try:
         import numpy as np
@@ -633,18 +646,6 @@ async def plot_solution(
         component = None  # Already extracted, don't re-index
         mixed_info = f"Extracted sub-space {sub_idx} from mixed space for plotting."
         logger.info(mixed_info)
-
-    # PRE-DG0: DG0 has cell-wise constants -- PyVista warp needs vertex data
-    if plot_type == "warp" and func_info.space_name in session.function_spaces:
-        sp = session.function_spaces[func_info.space_name]
-        if sp.element_degree == 0 and sp.element_family in (
-            "DG", "Discontinuous Lagrange",
-        ):
-            raise PreconditionError(
-                "Warp plots not supported for DG0 (piecewise constant) functions. "
-                "DG0 has cell-wise constant values with no vertex data for warping.",
-                suggestion="Use plot_type='contour' instead, or project to CG1 first.",
-            )
 
     # Detect vector vs scalar field
     # DOLFINx 0.10+: _BasixElement uses reference_value_shape, not value_shape
