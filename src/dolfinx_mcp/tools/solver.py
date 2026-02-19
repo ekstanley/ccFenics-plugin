@@ -983,7 +983,11 @@ async def solve_eigenvalue(
         eigval = eps.getEigenvalue(i)
 
         # Skip BC-induced spurious eigenvalue = 1.0
-        if bcs_list and abs(eigval.real - 1.0) < _BC_SPURIOUS_TOL and abs(eigval.imag) < _BC_SPURIOUS_TOL:
+        is_spurious = (
+            abs(eigval.real - 1.0) < _BC_SPURIOUS_TOL
+            and abs(eigval.imag) < _BC_SPURIOUS_TOL
+        )
+        if bcs_list and is_spurious:
             continue
 
         eigenvalues.append({

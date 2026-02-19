@@ -6,7 +6,6 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from conftest import (
     assert_error_type,
     assert_no_error,
