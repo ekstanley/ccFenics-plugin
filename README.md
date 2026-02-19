@@ -400,7 +400,7 @@ docker build -t dolfinx-mcp .
 ./scripts/run-docker-tests.sh
 
 # Lint & type check
-ruff check src/ tests/
+ruff check src/
 pyright src/dolfinx_mcp/
 ```
 
