@@ -891,8 +891,11 @@ class TestPhase10Contracts:
         mock_colliding.links.return_value = [0]
         mock_geometry.compute_colliding_cells.return_value = mock_colliding
 
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.geometry = mock_geometry
+
         with patch.dict(sys.modules, {
-            "dolfinx": MagicMock(),
+            "dolfinx": mock_dolfinx,
             "dolfinx.geometry": mock_geometry,
         }):
             result = await evaluate_solution(points=[[0.5, 0.5]], ctx=ctx)
@@ -926,8 +929,11 @@ class TestPhase10Contracts:
         mock_colliding.links.return_value = [0]
         mock_geometry.compute_colliding_cells.return_value = mock_colliding
 
+        mock_dolfinx = MagicMock()
+        mock_dolfinx.geometry = mock_geometry
+
         with patch.dict(sys.modules, {
-            "dolfinx": MagicMock(),
+            "dolfinx": mock_dolfinx,
             "dolfinx.geometry": mock_geometry,
         }):
             result = await query_point_values(points=[[0.5, 0.5]], ctx=ctx)
@@ -2045,6 +2051,8 @@ class TestPhase17Postconditions:
         """Postcondition fires when plot file is not created."""
         import sys
 
+        np = pytest.importorskip("numpy")
+
         from dolfinx_mcp.tools.postprocess import plot_solution
 
         session = SessionState()
@@ -2052,6 +2060,15 @@ class TestPhase17Postconditions:
         session.active_mesh = "m1"
         session.function_spaces["V"] = make_space_info("V", "m1")
         session.solutions["u_h"] = make_solution_info("u_h", "V")
+
+        # Set up mock function with proper numpy array so plot_data.ndim == 1
+        mock_func = MagicMock()
+        mock_space = MagicMock()
+        mock_space.ufl_element.return_value.reference_value_shape = ()
+        mock_func.function_space = mock_space
+        mock_func.x.array.real = np.array([0.0, 1.0, 2.0])
+        session.solutions["u_h"].function = mock_func
+
         ctx = make_mock_ctx(session)
 
         mock_pyvista = MagicMock()
