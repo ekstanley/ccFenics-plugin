@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.10.1] - 2026-02-19
+
+### Fixed
+- Resolved 12 ruff lint violations in source code (E501 line length, B905 zip strict, I001 import order, SIM108 ternary, B904 raise from)
+- Resolved 21 ruff lint violations in test files (I001, F401, F841, E501, B905)
+- CI lint job now passes cleanly on all Dependabot PRs
+
+### Changed
+- Updated GitHub Actions: checkout v4.2.2->v6.0.2, setup-python v5.6.0->v6.2.0, codeql-action SHA bump
+- Version bump to 0.10.1 across all 5 version locations
+
+---
+
 ## [0.10.0] - 2026-02-19
 
 ### Added

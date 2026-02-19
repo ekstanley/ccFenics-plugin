@@ -17,7 +17,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from conftest import (
     assert_error_type,
     assert_no_error,
@@ -30,11 +29,10 @@ from conftest import (
 )
 
 from dolfinx_mcp.errors import (
-    InvariantError,
     InvalidUFLExpressionError,
+    InvariantError,
 )
 from dolfinx_mcp.session import SessionState
-
 
 # ===========================================================================
 # 1. read_workspace_file
@@ -105,7 +103,6 @@ class TestReadWorkspaceFile:
         """Auto-detection encodes .png as base64."""
         from dolfinx_mcp.tools.session_mgmt import (
             _BINARY_EXTENSIONS,
-            _TEXT_EXTENSIONS,
         )
 
         assert ".png" in _BINARY_EXTENSIONS
@@ -222,6 +219,7 @@ class TestPlotSolutionVector:
     async def test_scalar_field_ignores_component(self):
         """Scalar field sets is_vector=False and no component_plotted key."""
         import numpy as np
+
         from dolfinx_mcp.tools.postprocess import plot_solution
 
         session = make_session_with_mesh()
@@ -263,6 +261,7 @@ class TestPlotSolutionVector:
     async def test_vector_magnitude_computation(self):
         """Vector field magnitude: sqrt(3^2+4^2)=5, sqrt(0+0)=0, sqrt(1+0)=1."""
         import numpy as np
+
         from dolfinx_mcp.tools.postprocess import plot_solution
 
         session = make_session_with_mesh()
@@ -320,7 +319,9 @@ class TestPlotSolutionVector:
     async def test_return_base64_produces_decodable_content(self):
         """return_base64=True includes decodable base64 string in result."""
         import base64
+
         import numpy as np
+
         from dolfinx_mcp.tools.postprocess import plot_solution
 
         session = make_session_with_mesh()
@@ -386,7 +387,7 @@ class TestProjectNumericCoercion:
         # should NOT fail at parameter validation
         import dolfinx_mcp.tools.interpolation as interp_mod
 
-        with patch.object(interp_mod, "eval_numpy_expression") as mock_eval:
+        with patch.object(interp_mod, "eval_numpy_expression"):
             # Mock the DOLFINx import chain
             mock_dolfinx = MagicMock()
             mock_ufl = MagicMock()
@@ -818,6 +819,7 @@ class TestPerformanceOptimizations:
     def test_eval_numpy_expression_correct(self) -> None:
         """P1: eval_numpy_expression still produces correct values."""
         import numpy as np
+
         from dolfinx_mcp.eval_helpers import eval_numpy_expression
 
         x = np.array([[0.0, 0.5, 1.0], [0.0, 0.0, 0.0]])  # 2D coords, 3 points
@@ -828,6 +830,7 @@ class TestPerformanceOptimizations:
     def test_boundary_marker_closure_correct(self) -> None:
         """P2: make_boundary_marker closure still works after namespace caching."""
         import numpy as np
+
         from dolfinx_mcp.eval_helpers import make_boundary_marker
 
         marker = make_boundary_marker("np.isclose(x[0], 0.0)")
@@ -845,7 +848,10 @@ class TestPerformanceOptimizations:
 
         # O(n) method (new)
         unique_tags, counts = np.unique(tag_values, return_counts=True)
-        fast_counts = {int(t): int(c) for t, c in zip(unique_tags, counts)}
+        fast_counts = {
+            int(t): int(c)
+            for t, c in zip(unique_tags, counts, strict=True)
+        }
 
         # O(k*n) method (old)
         naive_counts = {}

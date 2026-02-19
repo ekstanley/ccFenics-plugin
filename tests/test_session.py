@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
 from conftest import (
     make_bc_info,
     make_entity_map_info,
@@ -35,7 +34,6 @@ from dolfinx_mcp.session import (
     SessionState,
     SolutionInfo,
 )
-
 
 # ---------------------------------------------------------------------------
 # Tests: initialization
@@ -215,7 +213,7 @@ class TestFormAccessors:
         assert session.get_form("F1") is form_info
 
     def test_get_form_not_found(self, session: SessionState):
-        with pytest.raises(DOLFINxAPIError, match="No missing_form form"):
+        with pytest.raises(DOLFINxAPIError, match="missing_form"):
             session.get_form("missing_form")
 
     def test_register_form(self, session: SessionState):

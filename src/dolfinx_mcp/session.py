@@ -601,7 +601,7 @@ class SessionState:
         logger.info("Removed mesh '%s' and %d dependent spaces", name, len(dep_spaces))
 
     def _remove_space_dependents(self, space_name: str) -> None:
-        """Remove functions, BCs, solutions, and auto-created scalar spaces that depend on a space."""
+        """Remove dependents (functions, BCs, solutions, scalar spaces) of a space."""
         # Cascade auto-created scalar spaces (from set_material_properties F3 fix)
         scalar_child = f"_scalar_{space_name}"
         if scalar_child in self.function_spaces:
@@ -653,7 +653,10 @@ class SessionState:
         return {
             "active_mesh": self.active_mesh,
             "meshes": {k: self._safe_summary(k, v) for k, v in self.meshes.items()},
-            "function_spaces": {k: self._safe_summary(k, v) for k, v in self.function_spaces.items()},
+            "function_spaces": {
+                k: self._safe_summary(k, v)
+                for k, v in self.function_spaces.items()
+            },
             "functions": {k: self._safe_summary(k, v) for k, v in self.functions.items()},
             "boundary_conditions": {k: self._safe_summary(k, v) for k, v in self.bcs.items()},
             "forms": {k: self._safe_summary(k, v) for k, v in self.forms.items()},
