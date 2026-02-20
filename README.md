@@ -6,9 +6,9 @@
 
 <table>
 <tr>
-<td align="center"><strong>35</strong><br>MCP Tools</td>
+<td align="center"><strong>38</strong><br>MCP Tools</td>
 <td align="center"><strong>37</strong><br>FEM Skills</td>
-<td align="center"><strong>478</strong><br>Tests</td>
+<td align="center"><strong>493</strong><br>Tests</td>
 <td align="center"><strong>9</strong><br>Invariants</td>
 <td align="center"><strong>20</strong><br>Lean 4 Theorems</td>
 </tr>
@@ -19,7 +19,7 @@
          (Claude, Cursor, ...)                      (dolfinx/dolfinx:stable)
         +---------------------+                    +-----------------------+
         |                     |    JSON-RPC         |  FastMCP Server       |
-        |  "Solve the 3D      | ── stdio/http ───> |    35 Tool Handlers   |
+        |  "Solve the 3D      | ── stdio/http ───> |    38 Tool Handlers   |
         |   Poisson equation" |                     |    SessionState       |
         |                     | <─────────────────  |    /workspace output  |
         +---------------------+                    +-----------------------+
@@ -138,7 +138,7 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 
 ---
 
-## Tools (35)
+## Tools (38)
 
 ### Mesh Operations (9)
 
@@ -199,16 +199,19 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 | `project` | L2-project an expression onto a function space |
 | `create_discrete_operator` | Build a discrete operator matrix |
 
-### Session Management (6)
+### Session Management (9)
 
 | Tool | Description |
 |------|-------------|
 | `get_session_state` | List all registered meshes, spaces, functions, solutions |
 | `reset_session` | Clear all session state |
-| `run_custom_code` | Execute Python code in the session namespace |
+| `run_custom_code` | Execute Python code with persistent namespace across calls |
 | `assemble` | Assemble UFL forms into scalars, vectors, or matrices |
 | `remove_object` | Remove an object with cascade deletion of dependents |
 | `read_workspace_file` | Read files from /workspace/ as base64 (images) or text (VTK, CSV) |
+| `list_workspace_files` | List files in /workspace/ matching glob patterns |
+| `bundle_workspace_files` | Package workspace files into a ZIP archive |
+| `generate_report` | Generate an HTML simulation report with plots and diagnostics |
 
 ---
 
@@ -388,14 +391,14 @@ pip install -e ".[dev]"
 ```
 
 ```bash
-# Unit tests (no Docker, 230 tests)
+# Unit tests (no Docker, ~245 tests)
 pytest tests/ \
   --ignore=tests/test_runtime_contracts.py \
   --ignore=tests/test_tutorial_workflows.py \
   --ignore=tests/test_edge_case_contracts.py \
   --ignore=tests/test_poisson_workflow.py
 
-# Docker integration tests (248 tests)
+# Docker integration tests (193 tests across 6 suites)
 docker build -t dolfinx-mcp .
 ./scripts/run-docker-tests.sh
 
@@ -420,13 +423,13 @@ src/dolfinx_mcp/
         solver.py          5 solver tools
         postprocess.py     6 post-processing tools
         interpolation.py   4 interpolation tools
-        session_mgmt.py    6 session management tools
+        session_mgmt.py    9 session management tools
     prompts/templates.py   6 workflow prompts
     resources/providers.py 6 URI resources
 
 src/dolfinx_mcp_jupyter/   JupyterLab extension (5 IPython magics)
 
-tests/                     17 test files, 478 tests (230 unit + 248 Docker)
+tests/                     18 test files, ~438 tests (245 unit + 193 Docker)
 examples/                  3D Poisson notebook + production readiness suite
 .outline/proofs/           Lean 4 formal verification (20 theorems)
 ccfenics/                  Claude Code plugin (37 skills, 6 agents, 6 commands)

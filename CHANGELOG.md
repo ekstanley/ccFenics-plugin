@@ -6,6 +6,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.10.3] - 2026-02-19
+
+### Added
+- Persistent `run_custom_code` namespace — variables survive across calls via `exec_namespace` on SessionState
+- 3-layer namespace priority: user vars < session registries < system modules
+- 10 new tests (5 unit + 4 contract + 1 Docker integration)
+
+### Fixed
+- `gmsh.finalize()` crash after `model_to_mesh` consumes the model (wrapped in try/except)
+- Stale `gmshio` references in membrane skill docs (both `.claude/` and `ccfenics/`)
+- DbC audit: missing `session.check_invariants()` in `manage_mesh_tags` query path
+- DbC audit: `assemble` scalar used `DOLFINxAPIError` instead of `PostconditionError` for result validation
+- Tag counting optimization: O(k*n) loop replaced with O(n) `np.unique(return_counts=True)`
+
+### Changed
+- Docker tests: 192 -> 193
+
+---
+
+## [0.10.2] - 2026-02-19
+
+### Added
+- `list_workspace_files` tool — list files in /workspace directory
+- `bundle_workspace_files` tool — create base64-encoded archives of workspace files
+- `generate_report` tool — generate HTML reports with embedded plots
+- Total tools: 35 -> 38
+- 36 new workspace tool tests (192 total Docker tests, 6 suites)
+
+### Fixed
+- Removed manifest `entry_point` to fix Cowork tool discovery flakiness
+- Path traversal vulnerability in `bundle_workspace_files` archive_name (HIGH)
+- XSS in `_embed_image` alt attribute (MEDIUM)
+- `validate_workspace_path` boundary check accepting `/workspace2/` (MEDIUM)
+
+### Security
+- Extracted `validate_workspace_path` to shared `_validators.py`
+- Fixed 3 security vulnerabilities (1 HIGH path traversal, 2 MEDIUM)
+
+---
+
 ## [0.10.1] - 2026-02-19
 
 ### Fixed
