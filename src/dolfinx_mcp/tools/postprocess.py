@@ -20,7 +20,6 @@ from .._app import get_session, mcp
 from ..errors import (
     DOLFINxAPIError,
     DOLFINxMCPError,
-    FileIOError,
     FunctionNotFoundError,
     PostconditionError,
     PreconditionError,

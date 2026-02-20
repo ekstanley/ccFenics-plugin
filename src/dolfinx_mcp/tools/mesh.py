@@ -586,10 +586,10 @@ async def create_custom_mesh(
             gmsh.open(filename)
             mesh_data = model_to_mesh(gmsh.model, MPI.COMM_WORLD, rank=0)
         finally:
-            try:
-                gmsh.finalize()
-            except Exception:
-                pass  # Gmsh may error after model_to_mesh consumed the model
+            import contextlib
+
+            with contextlib.suppress(Exception):
+                gmsh.finalize()  # Gmsh may error after model_to_mesh consumed the model
 
         mesh = mesh_data.mesh
         cell_tags = mesh_data.cell_tags
@@ -914,7 +914,7 @@ async def manage_mesh_tags(
 
         # Count occurrences of each tag — O(n) via np.unique
         unique, counts = np.unique(tags.values, return_counts=True)
-        tag_counts = {int(t): int(c) for t, c in zip(unique, counts)}
+        tag_counts = {int(t): int(c) for t, c in zip(unique, counts, strict=True)}
 
         logger.info("Queried mesh tags '%s'", query_name)
         if __debug__:

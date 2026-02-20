@@ -641,10 +641,7 @@ async def list_workspace_files(
     from pathlib import Path
 
     workspace = Path("/workspace/")
-    if recursive:
-        matches = workspace.rglob(pattern)
-    else:
-        matches = workspace.glob(pattern)
+    matches = workspace.rglob(pattern) if recursive else workspace.glob(pattern)
 
     files: list[dict[str, Any]] = []
     total_size = 0

@@ -21,7 +21,6 @@ from conftest import (
 
 from dolfinx_mcp.session import SessionState
 
-
 # ===========================================================================
 # 1. list_workspace_files
 # ===========================================================================
@@ -479,27 +478,24 @@ class TestValidateWorkspacePath:
 
     def test_traversal_rejected(self):
         """Path traversal outside /workspace/ raises FileIOError."""
-        from dolfinx_mcp.tools._validators import validate_workspace_path
-
         from dolfinx_mcp.errors import FileIOError
+        from dolfinx_mcp.tools._validators import validate_workspace_path
 
         with pytest.raises(FileIOError, match="within /workspace"):
             validate_workspace_path("../etc/passwd")
 
     def test_absolute_traversal_rejected(self):
         """Absolute path outside /workspace/ raises FileIOError."""
-        from dolfinx_mcp.tools._validators import validate_workspace_path
-
         from dolfinx_mcp.errors import FileIOError
+        from dolfinx_mcp.tools._validators import validate_workspace_path
 
         with pytest.raises(FileIOError, match="within /workspace"):
             validate_workspace_path("/etc/passwd")
 
     def test_workspace_boundary_strict(self):
         """Path like /workspace2/... is rejected (Fix 3)."""
-        from dolfinx_mcp.tools._validators import validate_workspace_path
-
         from dolfinx_mcp.errors import FileIOError
+        from dolfinx_mcp.tools._validators import validate_workspace_path
 
         # /workspace2 starts with "/workspace" but is NOT inside /workspace/
         with pytest.raises(FileIOError, match="within /workspace"):

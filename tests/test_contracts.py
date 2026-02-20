@@ -677,7 +677,7 @@ class TestPhase8ErrorIntegrity:
 
     @pytest.mark.asyncio
     async def test_assemble_scalar_preserves_api_error(self):
-        """DOLFINxAPIError for NaN scalar not lost to plain dict."""
+        """PostconditionError for NaN scalar not lost to plain dict."""
         import sys
 
         from dolfinx_mcp.tools.session_mgmt import assemble
@@ -705,7 +705,7 @@ class TestPhase8ErrorIntegrity:
             patch("dolfinx_mcp.ufl_context.safe_evaluate", return_value=MagicMock()):
             result = await assemble(target="scalar", form="u*v*dx", ctx=ctx)
 
-        assert_error_type(result, "DOLFINX_API_ERROR")
+        assert_error_type(result, "POSTCONDITION_VIOLATED")
 
     @pytest.mark.asyncio
     async def test_run_custom_code_checks_invariants(self):
