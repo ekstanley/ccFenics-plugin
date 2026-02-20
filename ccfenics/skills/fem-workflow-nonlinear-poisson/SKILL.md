@@ -96,6 +96,10 @@ f = -div(q(u_exact) * grad(u_exact))
 
 This requires symbolic differentiation -- use `run_custom_code` for verification.
 
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
+
 ## Convergence Tips
 
 | Issue | Solution |

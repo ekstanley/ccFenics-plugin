@@ -134,6 +134,10 @@ L_compiled = fem.form(L_form, jit_options=jit_options)
 """)
 ```
 
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
+
 ## Diagnostics
 
 After solving, use `get_solver_diagnostics` to inspect solver performance:

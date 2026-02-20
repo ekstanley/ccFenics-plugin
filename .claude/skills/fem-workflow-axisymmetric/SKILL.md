@@ -100,6 +100,10 @@ define_variational_form(
 
 **Note**: Full axisymmetric elasticity also includes hoop stress terms (`u_r/r`). For problems where hoop stress is significant, use `run_custom_code` with the full strain tensor in cylindrical coordinates.
 
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
+
 ## Key Concepts
 
 - **r = x[0], z = x[1]**: The mesh coordinates map to cylindrical (r, z)

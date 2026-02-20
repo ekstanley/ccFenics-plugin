@@ -128,7 +128,8 @@ L = -f * v * ufl.dx
 # Solve
 from dolfinx.fem.petsc import LinearProblem
 problem = LinearProblem(a, L, bcs=[],
-    petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+    petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+    petsc_options_prefix="s_")
 wh = problem.solve()
 
 sigma_h, u_h = wh.split()
@@ -136,6 +137,10 @@ print(f"Flux norm: {np.linalg.norm(sigma_h.x.array):.6e}")
 print(f"Solution norm: {np.linalg.norm(u_h.x.array):.6e}")
 """)
 ```
+
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
 
 ## Key Concepts
 

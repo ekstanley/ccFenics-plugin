@@ -51,7 +51,8 @@ def solve_and_estimate(msh, degree=1):
 
     # Solve
     problem = LinearProblem(a, L, bcs=[bc],
-        petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+        petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+        petsc_options_prefix="s_")
     uh = problem.solve()
 
     # Error indicator (element residual)
@@ -83,6 +84,10 @@ for level in range(5):
 print("AMR complete")
 """)
 ```
+
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
 
 ## Key Concepts
 

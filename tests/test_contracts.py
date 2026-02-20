@@ -2270,6 +2270,16 @@ class TestPhase20LocalTestCompletion:
         assert "solutions" in result
         assert result["active_mesh"] is None
         assert result["meshes"] == {}
+        # Gap A: environment info is always present
+        assert "environment" in result
+        env = result["environment"]
+        assert "dolfinx_version" in env
+        assert "python_version" in env
+        assert "numpy_version" in env
+        assert "petsc_scalar_type" in env
+        # In mock context, imports fail → values are "unavailable"
+        for key in ("dolfinx_version", "petsc_scalar_type"):
+            assert isinstance(env[key], str)
 
     @pytest.mark.asyncio
     async def test_get_session_state_populated(self):

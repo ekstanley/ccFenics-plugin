@@ -39,14 +39,42 @@ async def get_session_state(
         dict with active_mesh (str or null), meshes (dict of mesh summaries),
         function_spaces (dict), functions (dict), boundary_conditions (dict),
         forms (dict), solutions (dict), mesh_tags (dict), entity_maps (dict),
-        and ufl_symbols (list of registered symbol names).
+        ufl_symbols (list of registered symbol names), and
+        environment (dict with dolfinx_version, python_version, numpy_version,
+        petsc_scalar_type — each "unavailable" if the import fails).
     """
     session = get_session(ctx)
 
     if __debug__:
         session.check_invariants()
 
-    return session.overview()
+    state = session.overview()
+
+    # Lazy-import environment info (DOLFINx only available in Docker)
+    env_info: dict[str, str] = {}
+    try:
+        import dolfinx
+        env_info["dolfinx_version"] = dolfinx.__version__
+    except Exception:
+        env_info["dolfinx_version"] = "unavailable"
+    try:
+        import sys
+        env_info["python_version"] = sys.version.split()[0]
+    except Exception:
+        env_info["python_version"] = "unavailable"
+    try:
+        import numpy as np
+        env_info["numpy_version"] = np.__version__
+    except Exception:
+        env_info["numpy_version"] = "unavailable"
+    try:
+        from petsc4py import PETSc
+        env_info["petsc_scalar_type"] = str(PETSc.ScalarType)
+    except Exception:
+        env_info["petsc_scalar_type"] = "unavailable"
+    state["environment"] = env_info
+
+    return state
 
 
 @mcp.tool()

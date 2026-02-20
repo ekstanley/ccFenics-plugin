@@ -76,6 +76,10 @@ For the full Cahn-Hilliard with time stepping, use `run_custom_code` because it 
 2. Use `run_custom_code` to implement the time-stepping loop
 3. Each timestep: assemble + Newton solve for (c, mu) pair, then update c_n
 
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
+
 ## Key Concepts
 
 - **Double-well potential**: `f(c) = 100*c^2*(1-c)^2` drives phase separation

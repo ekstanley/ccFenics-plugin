@@ -94,15 +94,18 @@ for step in range(num_steps):
     # ... (set inflow velocity, no-slip walls, outflow pressure)
 
     # Solve step 1
-    problem1 = LinearProblem(a1, L1, bcs=bcs_v)
+    problem1 = LinearProblem(a1, L1, bcs=bcs_v,
+        petsc_options={"ksp_type": "preonly", "pc_type": "lu"}, petsc_options_prefix="v_")
     u_.x.array[:] = problem1.solve().x.array
 
     # Solve step 2
-    problem2 = LinearProblem(a2, L2, bcs=bcs_p)
+    problem2 = LinearProblem(a2, L2, bcs=bcs_p,
+        petsc_options={"ksp_type": "preonly", "pc_type": "lu"}, petsc_options_prefix="p_")
     p_.x.array[:] = problem2.solve().x.array
 
     # Solve step 3
-    problem3 = LinearProblem(a3, L3, bcs=[])
+    problem3 = LinearProblem(a3, L3, bcs=[],
+        petsc_options={"ksp_type": "preonly", "pc_type": "lu"}, petsc_options_prefix="c_")
     u_new = problem3.solve()
 
     # Update for next step
@@ -113,6 +116,10 @@ for step in range(num_steps):
         print(f"Step {step}/{num_steps}, t={t:.3f}")
 """)
 ```
+
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
 
 ## Key Concepts
 

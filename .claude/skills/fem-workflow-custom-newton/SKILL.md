@@ -105,6 +105,10 @@ print(f"Solution norm: {np.linalg.norm(u.x.array):.6e}")
 """)
 ```
 
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
+
 ## Load Stepping
 
 For problems with large deformations or strong nonlinearity, apply the load incrementally:

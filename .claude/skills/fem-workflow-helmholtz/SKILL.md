@@ -54,13 +54,18 @@ L = ufl.inner(f, v) * ufl.dx
 
 # Solve (requires complex PETSc)
 problem = LinearProblem(a, L, bcs=[],
-    petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+    petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+    petsc_options_prefix="s_")
 p_h = problem.solve()
 
 print(f"Solution norm: {np.linalg.norm(p_h.x.array):.6e}")
 print(f"Max |p|: {np.abs(p_h.x.array).max():.6e}")
 """)
 ```
+
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
 
 ## Key Concepts
 

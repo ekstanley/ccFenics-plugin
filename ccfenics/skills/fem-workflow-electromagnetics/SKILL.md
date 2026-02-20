@@ -85,6 +85,10 @@ bc = fem.dirichletbc(u_bc, dofs)
 """)
 ```
 
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
+
 ### 6. Solve
 
 Curl-curl systems are often indefinite. Use direct solver or AMS preconditioner:

@@ -69,7 +69,8 @@ bc = fem.dirichletbc(u_bc, dofs)
 
 # Solve
 problem = LinearProblem(a, L, bcs=[bc],
-    petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+    petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+    petsc_options_prefix="s_")
 uh = problem.solve()
 
 print(f"Solution norm: {np.linalg.norm(uh.x.array)}")
@@ -77,6 +78,10 @@ print(f"Real part range: [{uh.x.array.real.min():.6f}, {uh.x.array.real.max():.6
 print(f"Imag part range: [{uh.x.array.imag.min():.6f}, {uh.x.array.imag.max():.6f}]")
 """)
 ```
+
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
 
 ## Key Concepts
 

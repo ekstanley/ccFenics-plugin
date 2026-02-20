@@ -74,6 +74,10 @@ print(f"Solution mean: {uh.x.array.mean():.2e} (should be ~0)")
 """)
 ```
 
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
+
 ## Key Concepts
 
 - **Nullspace**: The constant function `c` satisfies `A*c = 0` for pure Neumann problems

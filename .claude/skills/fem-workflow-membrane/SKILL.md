@@ -51,6 +51,10 @@ print(f"Circular mesh: {mesh.topology.index_map(2).size_global} cells")
 """)
 ```
 
+> **Namespace persistence**: Variables defined in `run_custom_code` persist across calls.
+> You can split complex workflows into multiple calls without re-importing or re-defining objects.
+> Session-registered objects (meshes, spaces, functions) are always injected fresh and override stale names.
+
 ### 2. Create Function Space on the Imported Mesh
 
 After the mesh is created via `run_custom_code`, continue with standard tools if the mesh is registered in the session. Otherwise, complete the solve within `run_custom_code`:
@@ -87,7 +91,8 @@ bc = fem.dirichletbc(fem.Function(V), dofs)
 
 # Solve
 problem = LinearProblem(a, L, bcs=[bc],
-    petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+    petsc_options={"ksp_type": "preonly", "pc_type": "lu"},
+    petsc_options_prefix="s_")
 w = problem.solve()
 
 print(f"Max deflection: {w.x.array.max():.6e}")
