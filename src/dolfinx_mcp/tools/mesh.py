@@ -912,12 +912,13 @@ async def manage_mesh_tags(
         tags_info = session.get_mesh_tags(query_name)
         tags = tags_info.tags
 
-        # Count occurrences of each tag
-        tag_counts = {}
-        for tag in tags_info.unique_tags:
-            tag_counts[tag] = int(np.sum(tags.values == tag))
+        # Count occurrences of each tag — O(n) via np.unique
+        unique, counts = np.unique(tags.values, return_counts=True)
+        tag_counts = {int(t): int(c) for t, c in zip(unique, counts)}
 
         logger.info("Queried mesh tags '%s'", query_name)
+        if __debug__:
+            session.check_invariants()
         return {
             "name": query_name,
             "mesh": tags_info.mesh_name,

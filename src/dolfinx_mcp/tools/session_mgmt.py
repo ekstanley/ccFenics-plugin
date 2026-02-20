@@ -241,7 +241,7 @@ async def assemble(
             fem_form = dolfinx.fem.form(ufl_form)
             scalar_val = float(dolfinx.fem.assemble_scalar(fem_form))
             if not np.isfinite(scalar_val):
-                raise DOLFINxAPIError(
+                raise PostconditionError(
                     "Assembly produced NaN/Inf scalar value.",
                     suggestion="Check form expression and boundary conditions.",
                 )
