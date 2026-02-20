@@ -23,6 +23,7 @@
   ],
   "server": {
     "type": "binary",
+    "entry_point": "run-server.sh",
     "mcp_config": {
       "command": "docker",
       "args": [
