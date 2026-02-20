@@ -8,7 +8,7 @@
 <tr>
 <td align="center"><strong>38</strong><br>MCP Tools</td>
 <td align="center"><strong>37</strong><br>FEM Skills</td>
-<td align="center"><strong>493</strong><br>Tests</td>
+<td align="center"><strong>514</strong><br>Tests</td>
 <td align="center"><strong>9</strong><br>Invariants</td>
 <td align="center"><strong>20</strong><br>Lean 4 Theorems</td>
 </tr>
@@ -391,14 +391,14 @@ pip install -e ".[dev]"
 ```
 
 ```bash
-# Unit tests (no Docker, ~245 tests)
+# Unit tests (no Docker, ~417 tests)
 pytest tests/ \
   --ignore=tests/test_runtime_contracts.py \
   --ignore=tests/test_tutorial_workflows.py \
   --ignore=tests/test_edge_case_contracts.py \
   --ignore=tests/test_poisson_workflow.py
 
-# Docker integration tests (193 tests across 6 suites)
+# Docker integration tests (514 tests across 6 suites)
 docker build -t dolfinx-mcp .
 ./scripts/run-docker-tests.sh
 
@@ -429,7 +429,7 @@ src/dolfinx_mcp/
 
 src/dolfinx_mcp_jupyter/   JupyterLab extension (5 IPython magics)
 
-tests/                     18 test files, ~438 tests (245 unit + 193 Docker)
+tests/                     18 test files, ~514 tests (417 unit + 97 Docker-only)
 examples/                  3D Poisson notebook + production readiness suite
 .outline/proofs/           Lean 4 formal verification (20 theorems)
 ccfenics/                  Claude Code plugin (37 skills, 6 agents, 6 commands)

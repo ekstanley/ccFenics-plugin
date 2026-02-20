@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.10.4] - 2026-02-20
+
+### Added
+- `get_session_state` now returns `environment` dict with DOLFINx version, PETSc scalar type, Python version, and numpy version (lazy-imported, "unavailable" when imports fail)
+- 30 SKILL.md files (15 skills × 2 locations) now document `run_custom_code` namespace persistence across calls
+
+### Fixed
+- 8 ruff lint errors: `contextlib.suppress` (SIM105), `zip(strict=True)` (B905), unused import (F401), ternary operator (SIM108), import sorting (I001 ×4)
+- Test assertion: `test_assemble_scalar_preserves_api_error` expected `DOLFINX_API_ERROR` but code correctly raises `POSTCONDITION_VIOLATED` for NaN assembly results
+- 6 skills (×2 locations) add required `petsc_options_prefix` kwarg for DOLFINx 0.10.0 `LinearProblem`
+
+### Changed
+- Tests: 493 -> 514
+- Unit tests: 417 (no Docker)
+- Docker integration tests: 514 total (all suites)
+
+---
+
 ## [0.10.3] - 2026-02-19
 
 ### Added
