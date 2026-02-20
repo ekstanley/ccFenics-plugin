@@ -26,7 +26,7 @@ The standard mesh tools only support rectangles/boxes. Use `run_custom_code` for
 run_custom_code(code="""
 import gmsh
 import numpy as np
-from dolfinx.io import gmshio
+from dolfinx.io.gmsh import model_to_mesh
 from mpi4py import MPI
 
 gmsh.initialize()
@@ -42,7 +42,7 @@ gmsh.option.setNumber("Mesh.CharacteristicLengthMax", 0.05)
 gmsh.model.mesh.generate(2)
 
 # Import into DOLFINx
-mesh, cell_tags, facet_tags = gmshio.model_to_mesh(
+mesh, cell_tags, facet_tags = model_to_mesh(
     gmsh.model, MPI.COMM_WORLD, 0, gdim=2
 )
 gmsh.finalize()
@@ -104,7 +104,7 @@ export_solution(solution_name="w", filename="membrane_deflection", format="vtk")
 
 ## Key Concepts
 
-- **Gmsh integration**: DOLFINx can import meshes from Gmsh via `dolfinx.io.gmshio`
+- **Gmsh integration**: DOLFINx can import meshes from Gmsh via `dolfinx.io.gmsh`
 - **Gaussian load**: Models localized pressure on the membrane
 - **Circular domain**: Requires non-standard mesh generation (Gmsh, not unit square)
 - **Warp plot**: Deformation visualization shows the membrane shape under load

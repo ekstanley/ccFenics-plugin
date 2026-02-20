@@ -51,6 +51,9 @@ class TestSessionInit:
         assert ov["active_mesh"] is None
         assert ov["meshes"] == {}
 
+    def test_exec_namespace_empty(self, session: SessionState):
+        assert session.exec_namespace == {}
+
 
 # ---------------------------------------------------------------------------
 # Tests: mesh accessors
@@ -197,6 +200,12 @@ class TestCleanup:
         session.log_buffer.append("test log")
         session.cleanup()
         assert len(session.log_buffer) == 0
+
+    def test_cleanup_clears_exec_namespace(self, session: SessionState):
+        session.exec_namespace["my_var"] = 42
+        session.exec_namespace["my_func"] = lambda x: x
+        session.cleanup()
+        assert len(session.exec_namespace) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +508,18 @@ class TestOverviewCompleteness:
         ov = session.overview()
         assert "ufl_symbols" in ov
         assert "x" in ov["ufl_symbols"]
+
+    def test_overview_includes_exec_namespace_keys(self, session: SessionState):
+        session.exec_namespace["helper"] = lambda x: x**2
+        session.exec_namespace["result"] = 42
+        ov = session.overview()
+        assert "exec_namespace_keys" in ov
+        assert set(ov["exec_namespace_keys"]) == {"helper", "result"}
+
+    def test_overview_exec_namespace_keys_empty(self, session: SessionState):
+        ov = session.overview()
+        assert "exec_namespace_keys" in ov
+        assert ov["exec_namespace_keys"] == []
 
 
 # ---------------------------------------------------------------------------

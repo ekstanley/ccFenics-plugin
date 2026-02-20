@@ -285,6 +285,8 @@ class SessionState:
         self.ufl_symbols: dict[str, Any] = {}
         self.solver_diagnostics: dict[str, Any] = {}
         self.log_buffer: list[str] = []
+        # Persistent namespace for run_custom_code (free-form, not subject to INV-1..9)
+        self.exec_namespace: dict[str, Any] = {}
         # Performance caches
         self._space_id_to_name: dict[int, str] = {}  # id(space) -> name
         self._boundary_tag_cache: dict[str, str] = {}  # mesh_name -> tag_name
@@ -664,6 +666,7 @@ class SessionState:
             "mesh_tags": {k: self._safe_summary(k, v) for k, v in self.mesh_tags.items()},
             "entity_maps": {k: self._safe_summary(k, v) for k, v in self.entity_maps.items()},
             "ufl_symbols": list(self.ufl_symbols.keys()),
+            "exec_namespace_keys": list(self.exec_namespace.keys()),
         }
 
     # --- Cleanup ---
@@ -681,6 +684,7 @@ class SessionState:
         self.ufl_symbols.clear()
         self.solver_diagnostics.clear()
         self.log_buffer.clear()
+        self.exec_namespace.clear()
         self.active_mesh = None
         self._space_id_to_name.clear()
         self._boundary_tag_cache.clear()
@@ -699,6 +703,7 @@ class SessionState:
             ("ufl_symbols", self.ufl_symbols),
             ("solver_diagnostics", self.solver_diagnostics),
             ("log_buffer", self.log_buffer),
+            ("exec_namespace", self.exec_namespace),
         ]:
             if len(_reg) != 0:
                 raise PostconditionError(

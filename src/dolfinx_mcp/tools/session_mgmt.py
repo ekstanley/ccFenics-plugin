@@ -20,6 +20,11 @@ from ._validators import require_nonempty, validate_workspace_path
 
 logger = logging.getLogger(__name__)
 
+# Keys injected into run_custom_code namespace that must never persist
+_EXEC_SYSTEM_KEYS = frozenset({
+    "session", "dolfinx", "ufl", "np", "MPI", "__builtins__",
+})
+
 
 @mcp.tool()
 @handle_tool_errors
@@ -74,6 +79,11 @@ async def run_custom_code(
 ) -> dict[str, Any]:
     """Execute arbitrary Python code in the session context.
 
+    Variables and functions defined in the code persist across calls, enabling
+    incremental development. Session-registered objects (meshes, spaces,
+    functions) are always injected fresh and take priority over persisted names.
+    Use reset_session to clear persisted variables.
+
     SECURITY NOTE: This executes user-provided code with full Python access.
     Safe only because it runs inside a Docker container with:
     - Network isolation (--network none)
@@ -81,10 +91,10 @@ async def run_custom_code(
     - Ephemeral container (--rm)
     - No host filesystem access
 
-    The execution namespace includes:
-    - session: The current SessionState object
-    - dolfinx, ufl, numpy, mpi4py: Scientific computing modules
-    - All session-registered functions, meshes, spaces, etc.
+    The execution namespace includes (in priority order):
+    - Previously defined user variables (from prior run_custom_code calls)
+    - All session-registered functions, meshes, spaces (override stale names)
+    - session, dolfinx, ufl, numpy, mpi4py: system modules (highest priority)
 
     Args:
         code: Python code to execute
@@ -109,20 +119,34 @@ async def run_custom_code(
     except ImportError as e:
         return {"output": "", "error": f"Import error: {e}"}
 
-    # Build execution namespace
-    exec_ns = {
+    # Build namespace with 3-layer priority
+    exec_ns: dict[str, Any] = {}
+
+    # Layer 1: Previously persisted user variables (lowest priority)
+    exec_ns.update(session.exec_namespace)
+
+    # Layer 2: Session-registered objects (override stale namespace entries)
+    exec_ns.update(session.functions)
+    exec_ns.update(session.meshes)
+    exec_ns.update(session.function_spaces)
+
+    # Layer 3: System modules (highest priority, never persist)
+    exec_ns.update({
         "session": session,
         "dolfinx": dolfinx,
         "ufl": ufl,
         "np": np,
         "MPI": MPI,
         "__builtins__": __builtins__,
-    }
+    })
 
-    # Add all session-registered objects
-    exec_ns.update(session.functions)
-    exec_ns.update(session.meshes)
-    exec_ns.update(session.function_spaces)
+    # Keys to exclude from persistence
+    injected_keys = (
+        _EXEC_SYSTEM_KEYS
+        | set(session.functions)
+        | set(session.meshes)
+        | set(session.function_spaces)
+    )
 
     # Execute code
     output_text = ""
@@ -141,6 +165,11 @@ async def run_custom_code(
             exec(code, exec_ns)
     except Exception as e:
         error_text = f"{type(e).__name__}: {e}"
+
+    # Persist user-defined names back to session (POST-1, POST-2, POST-3)
+    for key, value in exec_ns.items():
+        if key not in injected_keys and not key.startswith("_"):
+            session.exec_namespace[key] = value
 
     if __debug__:
         session.check_invariants()

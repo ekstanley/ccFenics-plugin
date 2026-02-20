@@ -586,7 +586,10 @@ async def create_custom_mesh(
             gmsh.open(filename)
             mesh_data = model_to_mesh(gmsh.model, MPI.COMM_WORLD, rank=0)
         finally:
-            gmsh.finalize()
+            try:
+                gmsh.finalize()
+            except Exception:
+                pass  # Gmsh may error after model_to_mesh consumed the model
 
         mesh = mesh_data.mesh
         cell_tags = mesh_data.cell_tags

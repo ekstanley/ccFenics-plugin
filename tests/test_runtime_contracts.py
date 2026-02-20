@@ -1351,3 +1351,34 @@ class TestBoundaryTagBCs:
         )
         assert result.get("error") == "PRECONDITION_VIOLATED"
         assert "99" in result.get("message", "")
+
+
+# ===========================================================================
+# Group N: Namespace Persistence (run_custom_code)
+# ===========================================================================
+
+
+class TestNamespacePersistence:
+    """Integration test for run_custom_code namespace persistence."""
+
+    @pytest.mark.asyncio
+    async def test_run_custom_code_namespace_persists_across_calls(self, session, ctx):
+        """Variables defined in call 1 are available in call 2."""
+        from dolfinx_mcp.tools.session_mgmt import run_custom_code
+
+        # Call 1: define a helper function
+        r1 = await run_custom_code(
+            code="def double(x): return 2 * x",
+            ctx=ctx,
+        )
+        assert r1.get("error") is None
+
+        # Call 2: use it
+        r2 = await run_custom_code(
+            code="result = double(21)\nprint(result)",
+            capture_output=True,
+            ctx=ctx,
+        )
+        assert r2.get("error") is None
+        assert "42" in r2["output"]
+        assert session.exec_namespace["result"] == 42

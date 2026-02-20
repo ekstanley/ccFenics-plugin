@@ -728,6 +728,101 @@ class TestPhase8ErrorIntegrity:
 
         mock_check.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_run_custom_code_persists_namespace(self):
+        """Variables defined in one call are available in the next."""
+        import sys
+
+        from dolfinx_mcp.tools.session_mgmt import run_custom_code
+
+        session = make_populated_session()
+        ctx = make_mock_ctx(session)
+
+        with patch.dict(sys.modules, {
+            "dolfinx": MagicMock(),
+            "numpy": MagicMock(),
+            "ufl": MagicMock(),
+            "mpi4py": MagicMock(),
+            "mpi4py.MPI": MagicMock(),
+        }):
+            result1 = await run_custom_code(code="my_var = 42", ctx=ctx)
+            assert result1.get("error") is None
+            assert "my_var" in session.exec_namespace
+            assert session.exec_namespace["my_var"] == 42
+
+            result2 = await run_custom_code(code="result = my_var + 8", ctx=ctx)
+            assert result2.get("error") is None
+            assert session.exec_namespace["result"] == 50
+
+    @pytest.mark.asyncio
+    async def test_run_custom_code_persists_functions(self):
+        """Functions defined in one call can be called in the next."""
+        import sys
+
+        from dolfinx_mcp.tools.session_mgmt import run_custom_code
+
+        session = make_populated_session()
+        ctx = make_mock_ctx(session)
+
+        with patch.dict(sys.modules, {
+            "dolfinx": MagicMock(),
+            "numpy": MagicMock(),
+            "ufl": MagicMock(),
+            "mpi4py": MagicMock(),
+            "mpi4py.MPI": MagicMock(),
+        }):
+            await run_custom_code(
+                code="def square(x): return x**2", ctx=ctx,
+            )
+            result = await run_custom_code(code="answer = square(7)", ctx=ctx)
+            assert result.get("error") is None
+            assert session.exec_namespace["answer"] == 49
+
+    @pytest.mark.asyncio
+    async def test_run_custom_code_system_keys_not_persisted(self):
+        """System keys (session, dolfinx, etc.) must not leak into exec_namespace."""
+        import sys
+
+        from dolfinx_mcp.tools.session_mgmt import run_custom_code
+
+        session = make_populated_session()
+        ctx = make_mock_ctx(session)
+
+        with patch.dict(sys.modules, {
+            "dolfinx": MagicMock(),
+            "numpy": MagicMock(),
+            "ufl": MagicMock(),
+            "mpi4py": MagicMock(),
+            "mpi4py.MPI": MagicMock(),
+        }):
+            await run_custom_code(code="x = 1", ctx=ctx)
+
+        for key in ("session", "dolfinx", "ufl", "np", "MPI", "__builtins__"):
+            assert key not in session.exec_namespace
+
+    @pytest.mark.asyncio
+    async def test_run_custom_code_reset_clears_namespace(self):
+        """reset_session clears the persistent namespace."""
+        import sys
+
+        from dolfinx_mcp.tools.session_mgmt import reset_session, run_custom_code
+
+        session = make_populated_session()
+        ctx = make_mock_ctx(session)
+
+        with patch.dict(sys.modules, {
+            "dolfinx": MagicMock(),
+            "numpy": MagicMock(),
+            "ufl": MagicMock(),
+            "mpi4py": MagicMock(),
+            "mpi4py.MPI": MagicMock(),
+        }):
+            await run_custom_code(code="my_var = 42", ctx=ctx)
+            assert "my_var" in session.exec_namespace
+
+        await reset_session(ctx=ctx)
+        assert len(session.exec_namespace) == 0
+
 
 # ---------------------------------------------------------------------------
 # Phase 9: Defensive exception guard sweep tests (3 tests)
