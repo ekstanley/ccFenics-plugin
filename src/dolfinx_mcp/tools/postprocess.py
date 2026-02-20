@@ -27,7 +27,7 @@ from ..errors import (
     handle_tool_errors,
 )
 from ..eval_helpers import eval_numpy_expression
-from ._validators import require_nonempty, require_positive
+from ._validators import require_nonempty, require_positive, validate_workspace_path
 
 logger = logging.getLogger(__name__)
 
@@ -102,26 +102,7 @@ def _suppress_stdout():
         os.close(devnull)
 
 
-def _validate_output_path(path: str) -> str:
-    """Validate and resolve an output file path within /workspace.
-
-    Args:
-        path: Raw file path from tool arguments.
-
-    Returns:
-        Resolved absolute path within /workspace.
-
-    Raises:
-        FileIOError: If the resolved path escapes /workspace.
-    """
-    resolved = os.path.realpath(os.path.join("/workspace", path))
-    if not resolved.startswith("/workspace"):
-        raise FileIOError(
-            f"Output path must be within /workspace, got '{path}'.",
-            suggestion="Use a simple filename like 'result.xdmf' or "
-            "a relative path within /workspace.",
-        )
-    return resolved
+_validate_output_path = validate_workspace_path
 
 
 @mcp.tool()

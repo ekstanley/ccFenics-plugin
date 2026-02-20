@@ -1,6 +1,6 @@
 # DOLFINx MCP Server
 
-MCP server for FEniCSx/DOLFINx finite element computing. Version 0.10.1.
+MCP server for FEniCSx/DOLFINx finite element computing. Version 0.10.2.
 
 ## Quick Reference
 
@@ -66,7 +66,7 @@ src/dolfinx_mcp/
         solver.py        5 solver tools (solve [+nullspace_mode], solve_time_dependent, get_solver_diagnostics, solve_nonlinear, solve_eigenvalue)
         postprocess.py   6 post-processing tools
         interpolation.py 4 interpolation tools (create_function, interpolate, project, create_discrete_operator)
-        session_mgmt.py  6 session management tools
+        session_mgmt.py  9 session management tools
     prompts/templates.py 6 workflow prompt templates
     resources/providers.py 6 URI resources
 ```
@@ -199,7 +199,7 @@ All run on Python 3.12, Ubuntu latest.
 
 ## Plugin Layer (Claude Code Integration)
 
-The `.claude/` directory adds FEM domain intelligence on top of the 35 MCP tools.
+The `.claude/` directory adds FEM domain intelligence on top of the 38 MCP tools.
 
 ### Skills (`.claude/skills/`)
 

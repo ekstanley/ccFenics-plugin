@@ -10,7 +10,7 @@ Usage in a Jupyter notebook::
 
 from __future__ import annotations
 
-__version__ = "0.10.1"
+__version__ = "0.10.2"
 
 
 def load_ipython_extension(ipython: object) -> None:

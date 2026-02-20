@@ -3,8 +3,8 @@ set -euo pipefail
 
 # Docker test runner — single container, all suites
 # Usage: ./scripts/run-docker-tests.sh [suite...]
-#   No args = run all 5 Docker suites
-#   Args   = run named suites (cowork, runtime, tutorial, edge, invariant)
+#   No args = run all 6 Docker suites
+#   Args   = run named suites (cowork, runtime, tutorial, edge, invariant, workspace)
 
 IMAGE="${DOLFINX_MCP_IMAGE:-dolfinx-mcp:latest}"
 CONTAINER_NAME="dolfinx-mcp-tests-$$"
@@ -17,11 +17,12 @@ suite_path() {
     tutorial)  echo "/app/tests/test_tutorial_workflows.py" ;;
     edge)      echo "/app/tests/test_edge_case_contracts.py" ;;
     invariant) echo "/app/tests/test_contracts.py -k invariant" ;;
+    workspace) echo "/app/tests/test_workspace_tools.py" ;;
     *) return 1 ;;
   esac
 }
 
-ALL_SUITES="cowork runtime tutorial edge invariant"
+ALL_SUITES="cowork runtime tutorial edge invariant workspace"
 
 # Default: all suites
 if [ $# -eq 0 ]; then

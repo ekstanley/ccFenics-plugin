@@ -82,7 +82,7 @@ claude --plugin-dir ./ccfenics
 3. Point to the `ccfenics/` directory in this repo
 4. Choose a **Workspace Directory** for simulation output
 
-The 35 MCP tools become available in your Cowork session.
+The 38 MCP tools become available in your Cowork session.
 
 </details>
 
@@ -214,7 +214,7 @@ A Jupyter notebook demonstrating a full 3D workflow is at
 
 ## Claude Code Plugin
 
-The `ccfenics/` directory adds FEM domain intelligence on top of the 35 MCP tools.
+The `ccfenics/` directory adds FEM domain intelligence on top of the 38 MCP tools.
 Load it with `claude --plugin-dir ./ccfenics`.
 
 ### Agents (6)
@@ -315,7 +315,7 @@ Use IPython magics inside JupyterLab:
 
 ## Design-by-Contract
 
-All 35 tools enforce runtime contracts:
+All 38 tools enforce runtime contracts:
 
 - **Preconditions**: Input validation (parameter types, ranges, existence checks)
 - **Postconditions**: Output validation (return structure, value constraints)

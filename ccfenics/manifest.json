@@ -2,8 +2,8 @@
   "manifest_version": "0.3",
   "name": "ccfenics",
   "display_name": "DOLFINx FEM Solver",
-  "version": "0.10.1",
-  "description": "FEniCSx/DOLFINx finite element computing — 35 MCP tools for mesh generation, function spaces, variational forms, solvers, and post-processing",
+  "version": "0.10.2",
+  "description": "FEniCSx/DOLFINx finite element computing — 38 MCP tools for mesh generation, function spaces, variational forms, solvers, and post-processing",
   "long_description": "MCP server for scientific computing with the FEniCSx/DOLFINx finite element framework. Solve Poisson, elasticity, Stokes, Navier-Stokes, Helmholtz, eigenvalue problems and more. Runs inside a Docker container with the full DOLFINx/PETSc/SLEPc stack.",
   "author": {
     "name": "DOLFINx MCP Contributors"
@@ -23,7 +23,6 @@
   ],
   "server": {
     "type": "binary",
-    "entry_point": "run-server.sh",
     "mcp_config": {
       "command": "docker",
       "args": [
@@ -72,7 +71,10 @@
     { "name": "run_custom_code", "description": "Execute Python code in the session namespace" },
     { "name": "assemble", "description": "Assemble UFL forms into scalars, vectors, or matrices" },
     { "name": "remove_object", "description": "Remove an object with cascade deletion of dependents" },
-    { "name": "read_workspace_file", "description": "Read files from /workspace/ as base64 (images) or text (VTK, CSV)" }
+    { "name": "read_workspace_file", "description": "Read files from /workspace/ as base64 (images) or text (VTK, CSV)" },
+    { "name": "list_workspace_files", "description": "List files in /workspace/ with size and modification time" },
+    { "name": "bundle_workspace_files", "description": "Zip multiple workspace files into a single archive" },
+    { "name": "generate_report", "description": "Generate a self-contained HTML report with plots, solver stats, and session data" }
   ],
   "compatibility": {
     "platforms": ["darwin", "linux", "win32"]

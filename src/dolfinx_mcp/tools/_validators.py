@@ -32,3 +32,29 @@ def require_finite(value: float, name: str) -> None:
     import math
     if not math.isfinite(value):
         raise PreconditionError(f"{name} must be finite, got {value}.")
+
+
+def validate_workspace_path(path: str) -> str:
+    """Validate and resolve a file path within /workspace.
+
+    Args:
+        path: Raw file path from tool arguments.
+
+    Returns:
+        Resolved absolute path within /workspace.
+
+    Raises:
+        FileIOError: If the resolved path escapes /workspace.
+    """
+    import os
+
+    from ..errors import FileIOError
+
+    resolved = os.path.realpath(os.path.join("/workspace", path))
+    if not resolved.startswith("/workspace" + os.sep) and resolved != "/workspace":
+        raise FileIOError(
+            f"Output path must be within /workspace, got '{path}'.",
+            suggestion="Use a simple filename like 'result.html' or "
+            "a relative path within /workspace.",
+        )
+    return resolved
