@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 8 ruff lint errors: `contextlib.suppress` (SIM105), `zip(strict=True)` (B905), unused import (F401), ternary operator (SIM108), import sorting (I001 ×4)
 - Test assertion: `test_assemble_scalar_preserves_api_error` expected `DOLFINX_API_ERROR` but code correctly raises `POSTCONDITION_VIOLATED` for NaN assembly results
 - 6 skills (×2 locations) add required `petsc_options_prefix` kwarg for DOLFINx 0.10.0 `LinearProblem`
+- Cowork extension manifest: added required `entry_point` field (`run-server.sh`)
 
 ### Changed
 - Tests: 493 -> 514
