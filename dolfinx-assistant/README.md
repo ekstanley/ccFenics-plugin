@@ -43,11 +43,13 @@ ln -s "$(pwd)/dolfinx-assistant" ~/.claude/plugins/dolfinx-assistant
 </details>
 
 <details>
-<summary><strong>Claude Cowork</strong></summary>
+<summary><strong>Claude Cowork</strong> (Desktop App)</summary>
 
-1. In Cowork, go to **Extensions** > **Install from folder**
-2. Point to the `dolfinx-assistant/` directory in this repo
-3. Choose a **Workspace Directory** for simulation output (VTK, XDMF files)
+1. Zip the `dolfinx-assistant/` folder
+2. In Claude Desktop, go to **Customize** > **Add Plugin** > upload the zip
+3. The plugin appears in your sidebar:
+
+![DOLFINx Assistant in Claude Cowork](ClaudeCoWorkPluginScreen.png)
 
 </details>
 

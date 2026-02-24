@@ -75,12 +75,11 @@ claude --plugin-dir ./ccfenics
 </details>
 
 <details>
-<summary><strong>Claude Cowork</strong> — Desktop Extension</summary>
+<summary><strong>Claude Cowork</strong> (Desktop App)</summary>
 
 1. Build the Docker image: `docker build -t dolfinx-mcp .`
-2. In Cowork, go to **Extensions** > **Install from folder**
-3. Point to the `ccfenics/` directory in this repo
-4. Choose a **Workspace Directory** for simulation output
+2. Zip the `dolfinx-assistant/` folder
+3. In Claude Desktop, go to **Customize** > **Add Plugin** > upload the zip
 
 The 38 MCP tools become available in your Cowork session.
 
