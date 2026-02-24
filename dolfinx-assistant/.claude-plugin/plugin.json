@@ -1,0 +1,9 @@
+{
+  "name": "dolfinx-assistant",
+  "version": "0.1.0",
+  "description": "FEA simulation workflow assistant for DOLFINx — guides setup, enforces quality standards, processes results, and generates reports",
+  "author": {
+    "name": "Ethan Stanley"
+  },
+  "keywords": ["fem", "fea", "dolfinx", "fenicsx", "simulation", "pde"]
+}
