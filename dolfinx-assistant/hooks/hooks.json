@@ -1,12 +1,32 @@
 {
   "PreToolUse": [
     {
-      "matcher": "DOLFINx_FEM_Solver__solve|DOLFINx_FEM_Solver__solve_nonlinear|DOLFINx_FEM_Solver__solve_time_dependent",
+      "matcher": "solve",
       "hooks": [
         {
           "type": "prompt",
-          "prompt": "Before this solve executes, verify the simulation setup is complete and reasonable:\n\n1. MESH: Is there an active mesh? Has mesh quality been checked or at least acknowledged?\n2. FUNCTION SPACE: Is a function space defined on the active mesh?\n3. BOUNDARY CONDITIONS: Are BCs defined? A problem with no BCs is usually an error.\n4. VARIATIONAL FORM: Are bilinear and linear forms defined?\n5. EXPRESSION SAFETY: Check that any UFL expressions in the tool input do not contain dangerous tokens (import, __, exec, eval, open, os., sys., subprocess).\n\nIf any critical issue is found (no mesh, no space, no form, dangerous expression), respond with 'BLOCK: <reason>'. Otherwise respond with 'ALLOW'.",
+          "prompt": "Before this solve executes, verify the simulation setup is complete and reasonable:\n\n1. MESH: Is there an active mesh? Has mesh quality been checked or at least acknowledged?\n2. FUNCTION SPACE: Is a function space defined on the active mesh?\n3. BOUNDARY CONDITIONS: Are BCs defined? A problem with no BCs is usually an error (exception: eigenvalue problems or pure Neumann with nullspace).\n4. VARIATIONAL FORM: For linear solves — are bilinear and linear forms defined? For nonlinear — is a residual provided? For eigenvalue — are stiffness and mass forms provided?\n5. EXPRESSION SAFETY: Check that any UFL expressions in the tool input do not contain dangerous tokens (import, __, exec, eval, open, os., sys., subprocess).\n6. SOLVER MATCH: Is the solver type appropriate? CG requires SPD matrix. Mixed/saddle-point problems need direct solver or fieldsplit. Nonlinear problems need SNES.\n7. DG CHECK: If using DG elements, verify the form includes interior penalty terms (dS integrals) and that penalty parameter is set.\n\nIf any critical issue is found (no mesh, no space, no form, dangerous expression, solver mismatch for problem type), respond with 'BLOCK: <reason>'. Otherwise respond with 'ALLOW'.",
           "timeout": 15
+        }
+      ]
+    },
+    {
+      "matcher": "create_custom_mesh",
+      "hooks": [
+        {
+          "type": "prompt",
+          "prompt": "A mesh is being imported from a file. After this tool completes, remind the user to:\n1. Check mesh quality with /check-mesh\n2. Review any cell_tags and facet_tags that were imported\n3. Verify the mesh dimension matches their problem\n\nRespond with 'ALLOW' to proceed.",
+          "timeout": 10
+        }
+      ]
+    },
+    {
+      "matcher": "define_variational_form",
+      "hooks": [
+        {
+          "type": "prompt",
+          "prompt": "A variational form is being defined. Check for common UFL mistakes:\n\n1. RANK CHECK: Bilinear form must contain both trial function (u) and test function (v). Linear form must contain only test function (v).\n2. OPERATOR CHECK: inner() requires matching tensor ranks. dot() contracts last index of first with first index of second. Don't use inner() for scalar*scalar — just multiply.\n3. MEASURE CHECK: Forms must end with *dx, *ds, or *dS. Missing measure is a common error.\n4. DG FORMS: If DG space is used, interior facet terms with dS should be present. Check for jump() and avg() usage.\n5. MIXED FORMS: If mixed space, verify sub-functions are accessed correctly (e.g., split(u) or u[0], u[1]).\n6. EXPRESSION SAFETY: Check for dangerous tokens (import, __, exec, eval, open, os., sys., subprocess).\n\nIf a clear error is detected, respond with 'BLOCK: <reason>'. Otherwise respond with 'ALLOW'.",
+          "timeout": 10
         }
       ]
     }
@@ -17,7 +37,7 @@
       "hooks": [
         {
           "type": "prompt",
-          "prompt": "A DOLFINx FEM simulation session is starting. Briefly remind the user of available commands:\n- /sim-setup — guided simulation configuration\n- /solve-pde — end-to-end PDE solve\n- /check-mesh — mesh quality audit\n- /run-convergence — convergence study\n- /sim-report — generate simulation report\n- /compare-solutions — compare two solutions\n- /export-results — export to VTK/XDMF\n- /tutorial — interactive tutorial walkthrough\n\nKeep it to 2-3 sentences. Don't list every command — just mention that commands are available and suggest /sim-setup or /solve-pde as starting points.",
+          "prompt": "A DOLFINx FEM simulation session is starting. Welcome the user in 2-3 sentences. Suggest /sim-setup for new simulations, /recipe [pde-name] for quick starts, or /diagnose if troubleshooting. Mention that /tutorial is available for learning. Do not list all commands.",
           "timeout": 10
         }
       ]

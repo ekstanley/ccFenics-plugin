@@ -45,4 +45,4 @@ After each major section (mesh, space, BCs, solve, results), pause and ask:
 2. Suggest a modification the user could try (different BCs, finer mesh, higher degree)
 3. Recommend the next tutorial chapter based on difficulty progression
 
-If $1 is provided, map it to the appropriate chapter and begin immediately.
+If $ARGUMENTS is provided, map it to the appropriate chapter and begin immediately.

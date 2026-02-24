@@ -4,6 +4,7 @@
 **Plugin Version**: 0.10.2
 **MCP Tool Specification**: 38 tools
 **Audit Scope**: 16 plugin files (11 skills, 4 commands, 2 agents)
+**Source**: Files from the v2 plugin distribution, now expanded into `dolfinx-assistant/` source directory.
 
 ---
 
@@ -29,9 +30,9 @@ The plugin demonstrates **excellent alignment** with the MCP server toolset. Too
 | **Form Definition** | 3 | 3/3 (100%) | Excellent |
 | **Boundary Conditions** | 1 | 1/1 (100%) | Excellent |
 | **Material Properties** | 1 | 1/1 (100%) | Excellent |
-| **Solvers** | 6 | 6/6 (100%) | Excellent |
+| **Solvers** | 5 | 5/5 (100%) | Excellent |
 | **Post-Processing** | 6 | 6/6 (100%) | Excellent |
-| **Session Management** | 9 | 3/9 (33%) | Low |
+| **Session Management** | 9 | 4/9 (44%) | Low |
 | **TOTAL** | **38** | **29/38 (76%)** | **Good** |
 
 **Interpretation**: Plugin focuses on core PDE solving (mesh, spaces, forms, solvers, post-processing) with minimal coverage of session management tools. This is appropriate for a formulation-focused plugin.

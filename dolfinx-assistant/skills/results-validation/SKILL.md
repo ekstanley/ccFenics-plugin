@@ -112,6 +112,48 @@ After every solve, verify:
 3. **Iteration count**: If near max_iter, solution may not be converged
 4. **Convergence reason**: Positive reason codes = converged, negative = diverged
 
+## Automated Report Generation
+
+After validation, automatically generate a comprehensive HTML report containing all results and diagnostics:
+
+```python
+generate_report(
+    title="Simulation Validation Report",
+    include_plots=True,              # Embed solution plots
+    include_solver_info=True,        # Solver diagnostics table
+    include_mesh_info=True,          # Mesh statistics
+    include_session_state=True,      # Full session JSON (for archiving)
+    output_file="validation_report.html"
+)
+```
+
+The generated report is self-contained and can be viewed in any web browser.
+
+### File Management
+
+Workspace utilities for organizing and archiving results:
+
+```python
+# List output files
+list_workspace_files(pattern="*.png")  # Find all plot files
+list_workspace_files(pattern="*.vtu")  # Find VTK exports
+
+# Read files (base64 for images, text for data files)
+read_workspace_file(file_path="plot.png")
+read_workspace_file(file_path="solution.vtu")
+
+# Bundle results into a single archive
+bundle_workspace_files(
+    file_paths=["*.vtu", "*.png", "report.html", "results.csv"],
+    archive_name="results.zip"
+)
+```
+
+Use these tools to:
+- Archive all outputs from a simulation campaign
+- Package results for sharing or publication
+- Organize mesh and solution files for later post-processing
+
 ## Report Checklist
 
 Every simulation report should include:

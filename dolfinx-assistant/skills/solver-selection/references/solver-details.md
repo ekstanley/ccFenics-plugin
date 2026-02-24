@@ -72,7 +72,7 @@ petsc_options = {
 
 | Line Search | PETSc Name | When |
 |-------------|-----------|------|
-| Basic (full step) | `bt` | Well-conditioned, close to solution |
+| Basic (full step) | `basic` | Well-conditioned, close to solution |
 | Backtracking | `bt` | Default, robust |
 | Critical point | `cp` | Near bifurcation points |
 | L2 norm | `l2` | Minimization-like problems |

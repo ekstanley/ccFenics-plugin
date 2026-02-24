@@ -42,3 +42,6 @@ workspace/
 
 # Debug logs
 *-debug.log
+
+# Plugin distribution archives
+*.plugin

@@ -16,7 +16,7 @@
 - Source: `2*x[1]*(1-x[1]) + 2*x[0]*(1-x[0])`
 - Domain: Unit square
 - BCs: Homogeneous Dirichlet
-- Note: P2+ elements recover this exactly (it's degree 4 in each variable)
+- Note: Total polynomial degree 4 (quadratic in each variable). P4+ elements recover this exactly; P2 will show discretization error.
 
 **Exponential peak**:
 - Exact: `exp(-50*((x[0]-0.5)**2 + (x[1]-0.5)**2))`
