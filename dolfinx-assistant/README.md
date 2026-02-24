@@ -1,10 +1,111 @@
 # DOLFINx Assistant
 
-FEA simulation workflow plugin for DOLFINx. Guides researchers and engineers through simulation setup, enforces quality standards, processes results, and generates reports.
+Structured FEM workflows for Claude Code. Guides simulation setup, enforces quality standards, diagnoses solver failures, and generates reports — all powered by the [DOLFINx MCP server](../README.md).
 
-## What It Does
+<table>
+<tr>
+<td align="center"><strong>22</strong><br>Commands</td>
+<td align="center"><strong>20</strong><br>Skills</td>
+<td align="center"><strong>6</strong><br>Agents</td>
+<td align="center"><strong>4</strong><br>Safety Hooks</td>
+</tr>
+</table>
 
-This plugin adds structured FEM workflows on top of the DOLFINx MCP server. It covers the full simulation lifecycle: problem formulation, mesh management, element and solver selection, advanced formulations (DG, mixed, axisymmetric), result validation, debugging, parametric studies, multi-physics coupling, and reporting.
+---
+
+## Quick Start
+
+### 1. Prerequisites
+
+Build the Docker image (one time):
+
+```bash
+git clone https://github.com/ekstanley/ccFenics-plugin.git
+cd ccFenics-plugin
+docker build -t dolfinx-mcp .
+```
+
+### 2. Install the Plugin
+
+<details>
+<summary><strong>Claude Code</strong></summary>
+
+```bash
+claude --plugin-dir ./dolfinx-assistant
+```
+
+Or symlink into your global plugins directory:
+
+```bash
+ln -s "$(pwd)/dolfinx-assistant" ~/.claude/plugins/dolfinx-assistant
+```
+
+</details>
+
+<details>
+<summary><strong>Claude Cowork</strong></summary>
+
+1. In Cowork, go to **Extensions** > **Install from folder**
+2. Point to the `dolfinx-assistant/` directory in this repo
+3. Choose a **Workspace Directory** for simulation output (VTK, XDMF files)
+
+</details>
+
+### 3. Configure the MCP Server
+
+Add to your MCP client configuration. Set `/path/to/workspace` to the directory for simulation output:
+
+```json
+{
+  "mcpServers": {
+    "dolfinx": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i", "--network", "none",
+        "-v", "/path/to/workspace:/workspace",
+        "dolfinx-mcp"
+      ]
+    }
+  }
+}
+```
+
+> If using this repo directly, `.mcp.json` is already configured — just run `claude` from the repo root.
+
+### 4. Start
+
+```
+/sim-setup       # Guided setup for a new simulation
+/recipe poisson  # Jump straight to a pre-built PDE formulation
+```
+
+---
+
+## Examples
+
+### Guided PDE Solve
+
+> **You:** `/solve-pde`
+>
+> **Assistant:** What PDE would you like to solve? (Poisson, elasticity, Stokes, heat equation, ...)
+>
+> **You:** Poisson on a unit square with f = sin(pi*x)*sin(pi*y)
+>
+> **Assistant:** *Creates mesh, function space, sets BCs, defines the form, solves, computes L2 error — step by step with explanations at each stage.*
+
+### Quick Recipe Lookup
+
+> **You:** `/recipe helmholtz`
+>
+> **Assistant:** *Returns the complete Helmholtz formulation: element choice (P2), variational form with wavenumber, Robin absorbing BCs, and recommended solver (direct/MUMPS for indefinite system).*
+
+### Debugging a Failed Solver
+
+> **You:** `/diagnose`
+>
+> **Assistant:** *Runs systematic checks: session completeness, mesh quality, BC coverage, form rank, solver-problem compatibility. Identifies root cause and suggests fixes.*
+
+---
 
 ## Commands (22)
 
@@ -55,9 +156,14 @@ This plugin adds structured FEM workflows on top of the DOLFINx MCP server. It c
 | `/export-results` | Export to VTK/XDMF and generate plots |
 | `/tutorial [chapter]` | Walk through a DOLFINx tutorial interactively |
 
+---
+
 ## Skills (20)
 
-### Formulation & Elements
+Skills trigger automatically when your message matches their keywords. No slash command needed — just describe what you want.
+
+<details>
+<summary><strong>Formulation & Elements</strong> (7 skills)</summary>
 
 | Skill | Triggers On |
 |-------|------------|
@@ -69,7 +175,10 @@ This plugin adds structured FEM workflows on top of the DOLFINx MCP server. It c
 | Axisymmetric Formulations | "axisymmetric", "cylindrical coordinates", "r-z plane", "revolution" |
 | PDE Cookbook | "recipe", "how to solve [PDE name]", "advection-diffusion", "wave equation", "Cahn-Hilliard" |
 
-### Solvers & Performance
+</details>
+
+<details>
+<summary><strong>Solvers & Performance</strong> (6 skills)</summary>
 
 | Skill | Triggers On |
 |-------|------------|
@@ -80,7 +189,10 @@ This plugin adds structured FEM workflows on top of the DOLFINx MCP server. It c
 | JIT Performance Tuning | "FFCx", "JIT", "performance", "quadrature degree", "compilation" |
 | Parallel MPI Awareness | "MPI", "parallel", "partitioning", "ghost mode", "distributed" |
 
-### Applications & Verification
+</details>
+
+<details>
+<summary><strong>Applications & Verification</strong> (3 skills)</summary>
 
 | Skill | Triggers On |
 |-------|------------|
@@ -88,7 +200,10 @@ This plugin adds structured FEM workflows on top of the DOLFINx MCP server. It c
 | MMS Verification | "manufactured solution", "MMS", "convergence rate", "code verification" |
 | Time-Dependent Setup | "time-dependent", "transient", "heat equation", "time stepping" |
 
-### Mesh & Data
+</details>
+
+<details>
+<summary><strong>Mesh & Data</strong> (4 skills)</summary>
 
 | Skill | Triggers On |
 |-------|------------|
@@ -97,37 +212,62 @@ This plugin adds structured FEM workflows on top of the DOLFINx MCP server. It c
 | Debugging & Diagnostics | "solver diverged", "NaN values", "wrong results", "debug simulation" |
 | Assembly Pedagogy | "how does assembly work", "what is lifting", "explain stiffness matrix" |
 
+</details>
+
+---
+
 ## Agents (6)
+
+Specialized sub-agents that handle complex, multi-step tasks autonomously.
 
 | Agent | Purpose | Model |
 |-------|---------|-------|
 | **simulation-designer** | Translates physical problem descriptions into DOLFINx simulation specs | sonnet |
-| **formulation-architect** | UFL form language expert — guides PDE → weak form → code translation | sonnet |
+| **formulation-architect** | UFL form language expert — guides PDE to weak form to code translation | sonnet |
 | **solver-optimizer** | PETSc solver configuration, custom Newton, matrix-free techniques | sonnet |
 | **parametric-study** | Designs and executes parameter sweeps with automated result collection | sonnet |
 | **debugging-assistant** | Systematic diagnosis of solver failures, NaN values, wrong results | sonnet |
 | **post-processor** | Automated post-processing: visualization, analysis, export, reports | sonnet |
 
-## Hooks
+---
 
-- **Pre-solve validation**: Checks mesh, function space, BCs, form completeness, DG penalty terms, solver-problem type compatibility. Blocks dangerous UFL expressions. Covers linear, nonlinear, time-dependent, and eigenvalue solves.
-- **Form definition validation**: Checks UFL form rank, operator usage, measure presence, DG interior facet terms, mixed sub-function access, and expression safety.
-- **Mesh import reminder**: After importing a Gmsh mesh, prompts for quality check and tag review.
-- **Session start**: Welcome with categorized command overview.
+## Safety Hooks (4)
+
+Hooks run automatically before tool calls and at session start. They catch common mistakes before they reach the solver.
+
+| Hook | When | What It Checks |
+|------|------|----------------|
+| **Pre-solve validation** | Before `solve`, `solve_nonlinear`, `solve_time_dependent`, `solve_eigenvalue` | Mesh exists, space defined, BCs present, form complete, DG penalty terms, solver-problem type match, expression safety |
+| **Form definition validation** | Before `define_variational_form` | UFL form rank, operator usage, measure presence, DG interior facet terms, mixed sub-function access, expression safety |
+| **Mesh import reminder** | After `create_custom_mesh` | Prompts for quality check (`/check-mesh`) and tag review |
+| **Session start** | On session open | Welcome message with command suggestions |
+
+---
+
+## Architecture
+
+This plugin is a **pure intelligence layer** — it contains no solver code. All computation happens through the 38 MCP tools provided by the DOLFINx MCP server running in Docker.
+
+```
+  Plugin Layer (this repo)              MCP Server (Docker)
+  ┌──────────────────────┐            ┌─────────────────────┐
+  │  22 Commands          │            │  38 Tool Handlers   │
+  │  20 Skills            │──── MCP ──>│  SessionState       │
+  │   6 Agents            │  (tools)   │  DOLFINx/FEniCSx    │
+  │   4 Safety Hooks      │            │  /workspace output  │
+  └──────────────────────┘            └─────────────────────┘
+```
+
+### Overlap with `.claude/` Layer
+
+If using this plugin alongside the `.claude/skills/` layer in this repository, note that `element-selection`, `solver-selection`, and `/tutorial` exist in both. The plugin versions are self-contained alternatives optimized for guided workflows.
+
+---
 
 ## Requirements
 
-- DOLFINx MCP server running in Docker
-- Docker container with FEniCSx installed
+- Docker with the `dolfinx-mcp` image built
+- Claude Code or Claude Cowork
+- MCP server configured (see [Quick Start](#quick-start))
 
-## Setup
-
-1. Install the plugin (place `dolfinx-assistant/` in your plugins directory or install via Claude Code)
-2. Start the DOLFINx MCP server (`docker run ...`)
-3. Use `/sim-setup` or `/recipe` to begin
-
-No environment variables required — the plugin communicates through the DOLFINx MCP server tools.
-
-## Relationship to .claude/ Layer
-
-This plugin is designed for **standalone distribution**. If using alongside the existing `.claude/skills/` layer in this repository, note that `element-selection`, `solver-selection`, and `/tutorial` exist in both. The plugin versions are self-contained alternatives optimized for guided workflows.
+No environment variables required — the plugin communicates through MCP tool calls.
